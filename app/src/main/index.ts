@@ -2,10 +2,11 @@ import { app, ipcMain, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
 import * as history from './history'
-import { createTray } from './tray'
+import { createTray, refreshTrayMenu } from './tray'
 import {
   createPillWindow,
   createRecorderWindow,
+  getPillWindow,
   getRecorderWindow,
   openSettingsWindow,
   setPillState
@@ -28,6 +29,7 @@ import {
 } from './sidecar'
 import { inject, killInjector, warmupInjector } from './injector'
 import { cleanup } from './cleanup'
+import { autoTag } from './tagger'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -104,8 +106,21 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.historyClear, () => history.clear())
 
+  ipcMain.handle(IPC.historyUpdateTags, (_event, ts: number, tags: string[]) =>
+    history.updateTags(ts, tags)
+  )
+
+  ipcMain.handle(IPC.historyTags, () => history.listTags())
+
   ipcMain.handle(IPC.debugSimulate, async () => {
     await simulateDictation()
+  })
+
+  // Live waveform: forward recorder level frames straight to the pill overlay.
+  // Hot path (~20 frames/s while recording) — keep it allocation-free, no logging.
+  ipcMain.on(IPC.recorderLevel, (_event, frame: number[]) => {
+    const pill = getPillWindow()
+    if (pill && !pill.isDestroyed()) pill.webContents.send(IPC.recorderLevel, frame)
   })
 
   // recorder:data / recorder:error are consumed via ipcMain.once in recorderStop().
@@ -152,7 +167,9 @@ app.whenReady().then(async () => {
       return transcribe(wav, promptWords.join(', ') || undefined, settings.language || undefined)
     },
     cleanup,
-    inject
+    inject,
+    // Non-blocking background topic-tagging (fires after inject, 8s cap).
+    autoTag: (ts, transcript) => autoTag(ts, transcript, getSettings(), history.updateTags)
   })
 
   const tray = createTray({
@@ -160,6 +177,10 @@ app.whenReady().then(async () => {
     onToggleEnabled: (enabled) => {
       dictationEnabled = enabled
       if (!enabled && isDictating()) void stopDictation()
+    },
+    getFlowMode: () => getSettings().flowMode,
+    onSetFlowMode: (mode) => {
+      setSettings({ flowMode: mode })
     },
     onOpenSettings: () => void openSettingsWindow('settings'),
     onOpenHistory: () => void openSettingsWindow('history'),
@@ -210,6 +231,10 @@ app.whenReady().then(async () => {
     }
     if (next.hotkey !== prev.hotkey || next.mode !== prev.mode) {
       reconfigureHotkey(next.hotkey, next.mode)
+    }
+    if (next.flowMode !== prev.flowMode) {
+      // Reflect Settings-UI mode changes back into the tray radio items.
+      refreshTrayMenu()
     }
     if (next.model !== prev.model) {
       void restartSidecar(next.model).catch((err) => {

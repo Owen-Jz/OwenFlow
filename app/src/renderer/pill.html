@@ -20,10 +20,12 @@
         width: 100%;
         height: 100%;
         font-family:
-          'Segoe UI Variable Text',
-          'Segoe UI',
-          system-ui,
-          sans-serif;
+          'JetBrains Mono',
+          'Cascadia Code',
+          'Cascadia Mono',
+          Consolas,
+          'Courier New',
+          monospace;
         -webkit-font-smoothing: antialiased;
         user-select: none;
       }
@@ -37,37 +39,41 @@
       #pill {
         display: flex;
         align-items: center;
-        gap: 10px;
-        height: 48px;
-        min-width: 220px;
-        max-width: 248px;
-        padding: 0 20px;
-        border-radius: 24px;
-        background: linear-gradient(180deg, rgba(38, 38, 46, 0.92), rgba(22, 22, 28, 0.94));
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        gap: 8px;
+        height: 52px;
+        width: 240px;
+        padding: 0 16px;
+        border-radius: 26px;
+        background: linear-gradient(180deg, rgba(26, 26, 34, 0.94), rgba(13, 13, 20, 0.96));
+        border: 1px solid rgba(139, 92, 246, 0.22);
         box-shadow:
-          0 8px 28px rgba(0, 0, 0, 0.45),
-          inset 0 1px 0 rgba(255, 255, 255, 0.07);
+          0 8px 28px rgba(0, 0, 0, 0.5),
+          0 0 18px rgba(139, 92, 246, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
         backdrop-filter: blur(14px);
         opacity: 0;
         transform: translateY(10px) scale(0.92);
         transition:
           opacity 180ms ease,
-          transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+          transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2),
+          border-color 240ms ease,
+          box-shadow 240ms ease;
         pointer-events: none;
       }
       #pill.visible {
         opacity: 1;
         transform: translateY(0) scale(1);
       }
-      #label {
-        color: rgba(240, 240, 245, 0.92);
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+      /* live waveform canvas (recording + transcribing) */
+      #wave {
+        display: none;
+        flex: 1 1 auto;
+        height: 32px;
+        min-width: 0;
+      }
+      #pill[data-state='recording'] #wave,
+      #pill[data-state='transcribing'] #wave {
+        display: block;
       }
       .icon {
         width: 14px;
@@ -76,61 +82,82 @@
         display: none;
         position: relative;
       }
-      /* recording: red pulsing dot */
+      /* recording: tiny red rec dot */
       #dot {
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         background: #ff453a;
-        box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.55);
-        animation: pulse 1.3s ease-out infinite;
+        box-shadow: 0 0 6px rgba(255, 69, 58, 0.8);
+        animation: blink 1.3s ease-in-out infinite;
       }
-      @keyframes pulse {
-        0% {
-          box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.55);
-        }
-        70% {
-          box-shadow: 0 0 0 9px rgba(255, 69, 58, 0);
-        }
+      @keyframes blink {
+        0%,
         100% {
-          box-shadow: 0 0 0 0 rgba(255, 69, 58, 0);
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
         }
       }
-      /* transcribing: spinner */
-      #spinner {
-        border-radius: 50%;
-        border: 2px solid rgba(139, 92, 246, 0.22);
-        border-top-color: #8b5cf6;
-        animation: spin 0.8s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      /* done: green check */
+      /* done: green check pop */
       #check {
         color: #32d74b;
+        margin: 0 auto;
       }
       #check svg {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
         display: block;
+        filter: drop-shadow(0 0 5px rgba(50, 215, 75, 0.6));
+        animation: pop 260ms cubic-bezier(0.2, 1.4, 0.4, 1);
+      }
+      @keyframes pop {
+        0% {
+          transform: scale(0.4);
+          opacity: 0;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
       }
       /* error: red bang */
       #bang {
         color: #ff453a;
-        font-weight: 800;
-        font-size: 13px;
+        font-weight: 700;
+        font-size: 12px;
         line-height: 14px;
         text-align: center;
       }
+      /* micro-typography label: error messages only */
+      #label {
+        display: none;
+        color: rgba(240, 240, 245, 0.88);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       #pill[data-state='recording'] #dot,
-      #pill[data-state='transcribing'] #spinner,
       #pill[data-state='done'] #check,
       #pill[data-state='error'] #bang {
         display: block;
       }
+      #pill[data-state='error'] #label {
+        display: block;
+      }
+      #pill[data-state='done'] {
+        border-color: rgba(50, 215, 75, 0.45);
+        box-shadow:
+          0 8px 28px rgba(0, 0, 0, 0.5),
+          0 0 20px rgba(50, 215, 75, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
       #pill[data-state='error'] {
-        border-color: rgba(255, 69, 58, 0.35);
+        border-color: rgba(255, 69, 58, 0.4);
       }
     </style>
   </head>
@@ -138,7 +165,7 @@
     <div id="stage">
       <div id="pill" data-state="idle">
         <div class="icon" id="dot"></div>
-        <div class="icon" id="spinner"></div>
+        <canvas id="wave"></canvas>
         <div class="icon" id="check">
           <svg viewBox="0 0 16 16" fill="none">
             <path

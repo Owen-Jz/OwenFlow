@@ -11,6 +11,7 @@ import type { OwenFlowSettings, PillState } from '../src/shared/types'
 const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   hotkey: 'RightCtrl',
   mode: 'hold',
+  flowMode: 'normal',
   model: 'small',
   language: 'en',
   cleanupEnabled: true,
@@ -87,11 +88,34 @@ describe('pipeline', () => {
     expect(isDictating()).toBe(false)
   })
 
-  it('skips cleanup when cleanupEnabled is false', async () => {
+  it('normal mode skips cleanup when cleanupEnabled is false', async () => {
     const order: string[] = []
-    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), order)
+    const deps = makeDeps(baseSettings({ flowMode: 'normal', cleanupEnabled: false }), order)
     await runDictation(deps)
     expect(deps.cleanup).not.toHaveBeenCalled()
+    expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
+  })
+
+  it('vibe mode runs cleanup even when cleanupEnabled is false', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ flowMode: 'vibe', cleanupEnabled: false }), order)
+    await runDictation(deps)
+    expect(deps.cleanup).toHaveBeenCalledTimes(1)
+    expect(deps.inject).toHaveBeenCalledWith('hello wisper world')
+  })
+
+  it('formal mode runs cleanup even when cleanupEnabled is false', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ flowMode: 'formal', cleanupEnabled: false }), order)
+    await runDictation(deps)
+    expect(deps.cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('vibe mode falls back to raw when the cleanup dep throws', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ flowMode: 'vibe', cleanupEnabled: false }), order)
+    deps.cleanup.mockRejectedValue(new Error('boom'))
+    await runDictation(deps)
     expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
   })
 

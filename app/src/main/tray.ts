@@ -1,15 +1,30 @@
 import { Menu, Tray, app, nativeImage } from 'electron'
 import trayIconPath from '../../resources/icon.png?asset'
+import type { FlowMode } from '../shared/types'
 
 export interface TrayCallbacks {
   isEnabled: () => boolean
   onToggleEnabled: (enabled: boolean) => void
+  getFlowMode: () => FlowMode
+  onSetFlowMode: (mode: FlowMode) => void
   onOpenSettings: () => void
   onOpenHistory: () => void
   onQuit: () => void
 }
 
+const FLOW_MODE_LABELS: Array<{ value: FlowMode; label: string }> = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'vibe', label: 'Vibe Coding' },
+  { value: 'formal', label: 'Formal' }
+]
+
 let tray: Tray | null = null
+let rebuild: (() => void) | null = null
+
+/** Re-render the tray menu (e.g. after a settings change from the UI). */
+export function refreshTrayMenu(): void {
+  rebuild?.()
+}
 
 /**
  * Draw a simple white microphone glyph into a raw BGRA bitmap so we don't
@@ -107,6 +122,16 @@ export function createTray(callbacks: TrayCallbacks): Tray {
         }
       },
       { type: 'separator' },
+      {
+        label: 'Mode',
+        submenu: FLOW_MODE_LABELS.map(({ value, label }) => ({
+          label,
+          type: 'radio' as const,
+          checked: callbacks.getFlowMode() === value,
+          click: () => callbacks.onSetFlowMode(value)
+        }))
+      },
+      { type: 'separator' },
       { label: 'Settings…', click: callbacks.onOpenSettings },
       { label: 'History…', click: callbacks.onOpenHistory },
       { type: 'separator' },
@@ -115,12 +140,14 @@ export function createTray(callbacks: TrayCallbacks): Tray {
     tray?.setContextMenu(menu)
   }
 
+  rebuild = rebuildMenu
   rebuildMenu()
   tray.on('double-click', callbacks.onOpenSettings)
 
   app.on('before-quit', () => {
     tray?.destroy()
     tray = null
+    rebuild = null
   })
 
   return tray

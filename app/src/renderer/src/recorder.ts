@@ -7,12 +7,17 @@
  * "recorder:data" with the WAV as an ArrayBuffer.
  */
 
+import { LEVEL_BINS } from '../../shared/types'
+
 const TARGET_SAMPLE_RATE = 16000
+const LEVEL_INTERVAL_MS = 50
 
 let audioContext: AudioContext | null = null
 let mediaStream: MediaStream | null = null
 let sourceNode: MediaStreamAudioSourceNode | null = null
 let processorNode: ScriptProcessorNode | null = null
+let analyserNode: AnalyserNode | null = null
+let levelTimer: ReturnType<typeof setInterval> | null = null
 let chunks: Float32Array[] = []
 let recording = false
 
@@ -48,6 +53,13 @@ async function startCapture(): Promise<void> {
     sourceNode.connect(processorNode)
     // ScriptProcessor needs a destination connection to fire in Chromium.
     processorNode.connect(audioContext.destination)
+
+    // Analyser tap for the live waveform pill (parallel branch, no audio path).
+    analyserNode = audioContext.createAnalyser()
+    analyserNode.fftSize = 64 // 32 frequency bins at 16kHz (250Hz each)
+    analyserNode.smoothingTimeConstant = 0.55
+    sourceNode.connect(analyserNode)
+    startLevelEmitter(analyserNode)
   } catch (err) {
     recording = false
     releaseResources()
@@ -74,8 +86,42 @@ function stopCapture(): void {
   window.owenflow.recorder.sendData(encodeWav(samples, sampleRate))
 }
 
+/**
+ * Every LEVEL_INTERVAL_MS while recording: compress the analyser's frequency
+ * data into LEVEL_BINS values 0..1 and send them via "recorder:level".
+ */
+function startLevelEmitter(analyser: AnalyserNode): void {
+  stopLevelEmitter()
+  const freq = new Uint8Array(analyser.frequencyBinCount)
+  // Top quarter of the spectrum (6-8kHz) carries almost no voice energy — drop it.
+  const usable = Math.floor(freq.length * 0.75)
+  const step = usable / LEVEL_BINS
+  levelTimer = setInterval(() => {
+    if (!recording) return
+    analyser.getByteFrequencyData(freq)
+    const frame: number[] = new Array(LEVEL_BINS)
+    for (let i = 0; i < LEVEL_BINS; i++) {
+      const from = Math.floor(i * step)
+      const to = Math.max(from + 1, Math.floor((i + 1) * step))
+      let sum = 0
+      for (let j = from; j < to; j++) sum += freq[j]
+      frame[i] = Math.round((sum / (to - from) / 255) * 1000) / 1000
+    }
+    window.owenflow.recorder.sendLevel(frame)
+  }, LEVEL_INTERVAL_MS)
+}
+
+function stopLevelEmitter(): void {
+  if (levelTimer !== null) {
+    clearInterval(levelTimer)
+    levelTimer = null
+  }
+}
+
 function releaseResources(): void {
+  stopLevelEmitter()
   try {
+    analyserNode?.disconnect()
     processorNode?.disconnect()
     sourceNode?.disconnect()
     mediaStream?.getTracks().forEach((t) => t.stop())
@@ -83,6 +129,7 @@ function releaseResources(): void {
   } catch {
     /* best effort */
   }
+  analyserNode = null
   processorNode = null
   sourceNode = null
   mediaStream = null

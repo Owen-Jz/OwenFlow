@@ -2,7 +2,15 @@
  * Settings + History window renderer (two tabs, one window).
  */
 
-import type { HistoryEntry, OwenFlowSettings } from '../../shared/types'
+// Techy typography: Space Grotesk for headings/UI, JetBrains Mono for
+// values, inputs and micro-text.
+import '@fontsource/space-grotesk/400.css'
+import '@fontsource/space-grotesk/500.css'
+import '@fontsource/space-grotesk/700.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/700.css'
+
+import type { FlowMode, HistoryEntry, OwenFlowSettings } from '../../shared/types'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -38,8 +46,25 @@ const fMinimaxKey = $<HTMLInputElement>('f-minimax-key')
 const fMinimaxGroup = $<HTMLInputElement>('f-minimax-group')
 const fDictionary = $<HTMLTextAreaElement>('f-dictionary')
 const fStartup = $<HTMLInputElement>('f-startup')
-const cleanupFields = $('cleanup-fields')
 const saveStatus = $('save-status')
+
+// ─── Mode cards ─────────────────────────────────────────────────────────────
+
+const modeCards = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('.mode-card[data-flow-mode]')
+)
+let selectedFlowMode: FlowMode = 'normal'
+
+function selectFlowMode(mode: FlowMode): void {
+  selectedFlowMode = mode
+  for (const card of modeCards) {
+    card.classList.toggle('selected', card.dataset.flowMode === mode)
+  }
+}
+
+for (const card of modeCards) {
+  card.addEventListener('click', () => selectFlowMode(card.dataset.flowMode as FlowMode))
+}
 
 function fillForm(s: OwenFlowSettings): void {
   fHotkey.value = s.hotkey
@@ -51,13 +76,14 @@ function fillForm(s: OwenFlowSettings): void {
   fMinimaxGroup.value = s.minimaxGroupId
   fDictionary.value = s.dictionary.join('\n')
   fStartup.checked = s.launchOnStartup
-  cleanupFields.classList.toggle('visible', s.cleanupEnabled)
+  selectFlowMode(s.flowMode ?? 'normal')
 }
 
 function readForm(): Partial<OwenFlowSettings> {
   return {
     hotkey: fHotkey.value.trim() || 'RightCtrl',
     mode: fMode.value === 'toggle' ? 'toggle' : 'hold',
+    flowMode: selectedFlowMode,
     model: fModel.value as OwenFlowSettings['model'],
     language: fLanguage.value.trim(),
     cleanupEnabled: fCleanup.checked,
@@ -70,10 +96,6 @@ function readForm(): Partial<OwenFlowSettings> {
     launchOnStartup: fStartup.checked
   }
 }
-
-fCleanup.addEventListener('change', () => {
-  cleanupFields.classList.toggle('visible', fCleanup.checked)
-})
 
 let statusTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -94,6 +116,109 @@ $('btn-test').addEventListener('click', () => {
 
 const historyList = $('history-list')
 const historyCount = $('history-count')
+const tagFilter = $<HTMLSelectElement>('tag-filter')
+const activeFilter = $('active-filter')
+const activeFilterName = $('active-filter-name')
+
+/** Currently active tag filter ('' = show all). */
+let filterTag = ''
+
+function setFilter(tag: string): void {
+  filterTag = tag
+  tagFilter.value = tag
+  activeFilterName.textContent = tag ? `#${tag}` : ''
+  activeFilter.classList.toggle('show', !!tag)
+  void refreshHistory()
+}
+
+tagFilter.addEventListener('change', () => setFilter(tagFilter.value))
+$('btn-clear-filter').addEventListener('click', () => setFilter(''))
+
+async function refreshTagFilter(): Promise<void> {
+  const tags = await window.owenflow.history.tags()
+  tagFilter.replaceChildren()
+  const all = document.createElement('option')
+  all.value = ''
+  all.textContent = 'all tags'
+  tagFilter.append(all)
+  for (const { tag, count } of tags) {
+    const opt = document.createElement('option')
+    opt.value = tag
+    opt.textContent = `#${tag} (${count})`
+    tagFilter.append(opt)
+  }
+  // Keep the active filter selected if it still exists; otherwise drop it.
+  if (filterTag && !tags.some((t) => t.tag === filterTag)) {
+    filterTag = ''
+    activeFilter.classList.remove('show')
+  }
+  tagFilter.value = filterTag
+}
+
+async function saveTags(entry: HistoryEntry, tags: string[]): Promise<void> {
+  entry.tags = tags
+  await window.owenflow.history.updateTags(entry.ts, tags)
+  await refreshHistory()
+}
+
+function renderTags(entry: HistoryEntry): HTMLElement {
+  const wrap = document.createElement('div')
+  wrap.className = 'tags'
+
+  for (const tag of entry.tags) {
+    const chip = document.createElement('span')
+    chip.className = 'tag-chip'
+    chip.title = `Filter by #${tag}`
+
+    const name = document.createElement('span')
+    name.textContent = `#${tag}`
+    name.addEventListener('click', () => setFilter(tag))
+
+    const x = document.createElement('span')
+    x.className = 'x'
+    x.textContent = '✕'
+    x.title = `Remove #${tag}`
+    x.addEventListener('click', (e) => {
+      e.stopPropagation()
+      void saveTags(
+        entry,
+        entry.tags.filter((t) => t !== tag)
+      )
+    })
+
+    chip.append(name, x)
+    wrap.append(chip)
+  }
+
+  const add = document.createElement('button')
+  add.className = 'tag-add'
+  add.textContent = '+ tag'
+  add.addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.className = 'tag-input'
+    input.placeholder = 'new-tag'
+    input.spellcheck = false
+    add.replaceWith(input)
+    input.focus()
+
+    const commit = (): void => {
+      const tag = input.value.trim().toLowerCase().replace(/\s+/g, '-')
+      if (tag && !entry.tags.includes(tag)) {
+        void saveTags(entry, [...entry.tags, tag])
+      } else {
+        input.replaceWith(add)
+      }
+    }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit()
+      if (e.key === 'Escape') input.replaceWith(add)
+    })
+    input.addEventListener('blur', () => commit())
+  })
+  wrap.append(add)
+
+  return wrap
+}
 
 function formatTs(ts: number): string {
   const d = new Date(ts)
@@ -115,13 +240,15 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
 
   const ts = document.createElement('div')
   ts.className = 'ts'
-  ts.textContent = `${formatTs(entry.ts)} · ${(entry.durationMs / 1000).toFixed(1)}s`
+  ts.textContent =
+    `${formatTs(entry.ts)} · ${(entry.durationMs / 1000).toFixed(1)}s` +
+    (entry.mode ? ` · ${entry.mode}` : '')
 
   const text = document.createElement('div')
   text.className = 'text'
   text.textContent = entry.final
 
-  body.append(ts, text)
+  body.append(ts, text, renderTags(entry))
 
   const copy = document.createElement('button')
   copy.className = 'copy'
@@ -137,15 +264,18 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
 }
 
 async function refreshHistory(): Promise<void> {
-  const entries = await window.owenflow.history.list(200)
+  const [all] = await Promise.all([window.owenflow.history.list(200), refreshTagFilter()])
+  const entries = filterTag ? all.filter((e) => e.tags.includes(filterTag)) : all
   historyList.replaceChildren()
   historyCount.textContent = entries.length
-    ? `${entries.length} dictation${entries.length === 1 ? '' : 's'}`
+    ? `${entries.length} dictation${entries.length === 1 ? '' : 's'}${filterTag ? ` · #${filterTag}` : ''}`
     : ''
   if (entries.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'empty'
-    empty.textContent = 'No dictations yet. Hold the hotkey and speak.'
+    empty.textContent = filterTag
+      ? `No dictations tagged #${filterTag}.`
+      : 'No dictations yet. Hold the hotkey and speak.'
     historyList.append(empty)
     return
   }

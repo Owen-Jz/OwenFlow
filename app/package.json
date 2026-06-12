@@ -1,6 +1,6 @@
 {
   "name": "owenflow",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "productName": "OwenFlow",
   "description": "Local push-to-talk dictation — hold a key, speak, text appears",
   "main": "./out/main/index.js",
@@ -24,6 +24,8 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
     "electron-store": "^8.2.0",
     "uiohook-napi": "^1.5.5"
   },

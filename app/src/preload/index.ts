@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { HistoryEntry, OwenFlowApi, OwenFlowSettings, PillState } from '../shared/types'
+import type {
+  HistoryEntry,
+  LevelFrame,
+  OwenFlowApi,
+  OwenFlowSettings,
+  PillState,
+  TagCount
+} from '../shared/types'
 import { IPC } from '../shared/types'
 
 function subscribe<T extends unknown[]>(channel: string, cb: (...args: T) => void): () => void {
@@ -18,10 +25,14 @@ const api: OwenFlowApi = {
   },
   history: {
     list: (limit?: number): Promise<HistoryEntry[]> => ipcRenderer.invoke(IPC.historyList, limit),
-    clear: (): Promise<void> => ipcRenderer.invoke(IPC.historyClear)
+    clear: (): Promise<void> => ipcRenderer.invoke(IPC.historyClear),
+    updateTags: (ts: number, tags: string[]): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.historyUpdateTags, ts, tags),
+    tags: (): Promise<TagCount[]> => ipcRenderer.invoke(IPC.historyTags)
   },
   pill: {
-    onState: (cb: (state: PillState) => void) => subscribe<[PillState]>(IPC.pillState, cb)
+    onState: (cb: (state: PillState) => void) => subscribe<[PillState]>(IPC.pillState, cb),
+    onLevel: (cb: (frame: LevelFrame) => void) => subscribe<[LevelFrame]>(IPC.recorderLevel, cb)
   },
   recorder: {
     onStart: (cb: () => void) => subscribe<[]>(IPC.recorderStart, cb),
@@ -31,6 +42,9 @@ const api: OwenFlowApi = {
     },
     sendError: (message: string): void => {
       ipcRenderer.send(IPC.recorderError, message)
+    },
+    sendLevel: (frame: LevelFrame): void => {
+      ipcRenderer.send(IPC.recorderLevel, frame)
     }
   },
   ui: {

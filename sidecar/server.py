@@ -16,7 +16,20 @@ from fastapi import FastAPI, File, Form, UploadFile
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("owenflow.sidecar")
 
-MODEL_SIZE = os.environ.get("OWENFLOW_MODEL", "small")
+MODEL_SIZE = os.environ.get("OWENFLOW_MODEL", "large-v3-turbo")
+FALLBACK_MODEL = "small"
+
+
+def _default_compute(model_size: str) -> str:
+    """Empirical (RTX 3050 Laptop 4GB, 2026-06-12): large-v3-turbo float16
+    needs ~1.6GB and thrashes when the GPU is shared (15s/utterance);
+    int8_float16 fits in ~1GB and runs ~2s with identical transcripts."""
+    if model_size.startswith("large") or model_size == "turbo":
+        return "int8_float16"
+    return "float16"
+
+
+COMPUTE_TYPE = os.environ.get("OWENFLOW_COMPUTE", _default_compute(MODEL_SIZE))
 
 
 def _register_cuda_dlls() -> None:
@@ -48,29 +61,52 @@ app = FastAPI(title="OwenFlow STT Sidecar")
 
 _model = None
 _device = "unloaded"
+_loaded_model = "unloaded"
 
 
-def _load_model():
-    global _model, _device
+def _try_load(model_size: str, compute_type: str) -> bool:
+    """Load model_size with the CUDA warmup-probe -> CPU int8 fallback.
+    Returns True on success, False if neither device could load it."""
+    global _model, _device, _loaded_model
     from faster_whisper import WhisperModel
 
     try:
-        log.info("Loading whisper model '%s' on cuda/float16...", MODEL_SIZE)
-        model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
+        log.info("Loading whisper model '%s' on cuda/%s...", model_size, compute_type)
+        model = WhisperModel(model_size, device="cuda", compute_type=compute_type)
         # CUDA errors surface lazily at inference (e.g. missing cuBLAS/cuDNN
-        # DLLs), so validate with a tiny warmup before committing to the GPU.
+        # DLLs, OOM), so validate with a tiny warmup before committing to GPU.
         import numpy as np
 
         segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32))
         list(segments)
         _model = model
         _device = "cuda"
-        log.info("Model '%s' loaded on CUDA (float16).", MODEL_SIZE)
+        _loaded_model = model_size
+        log.info("Model '%s' loaded on CUDA (%s).", model_size, compute_type)
+        return True
     except Exception as e:
-        log.warning("CUDA load failed (%s); falling back to CPU int8.", e)
-        _model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+        log.warning("CUDA load of '%s' failed (%s); falling back to CPU int8.", model_size, e)
+
+    try:
+        _model = WhisperModel(model_size, device="cpu", compute_type="int8")
         _device = "cpu"
-        log.info("Model '%s' loaded on CPU (int8).", MODEL_SIZE)
+        _loaded_model = model_size
+        log.info("Model '%s' loaded on CPU (int8).", model_size)
+        return True
+    except Exception as e:
+        log.error("CPU load of '%s' failed too (%s).", model_size, e)
+        return False
+
+
+def _load_model():
+    """Graceful chain: requested model -> FALLBACK_MODEL so the app is never modelless."""
+    if _try_load(MODEL_SIZE, COMPUTE_TYPE):
+        return
+    if MODEL_SIZE != FALLBACK_MODEL:
+        log.warning("Requested model '%s' unavailable; falling back to '%s'.", MODEL_SIZE, FALLBACK_MODEL)
+        if _try_load(FALLBACK_MODEL, _default_compute(FALLBACK_MODEL)):
+            return
+    log.error("No whisper model could be loaded; /transcribe will fail until restart.")
 
 
 @app.on_event("startup")
@@ -80,7 +116,7 @@ def startup() -> None:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": MODEL_SIZE, "loaded": _model is not None}
+    return {"ok": True, "model": _loaded_model, "loaded": _model is not None}
 
 
 @app.post("/transcribe")
@@ -103,7 +139,14 @@ async def transcribe(
             tmp_path,
             initial_prompt=prompt or None,
             language=language or None,
+            # accuracy: wider beam search; short dictations don't benefit from
+            # cross-window conditioning (it amplifies hallucinated repeats)
+            beam_size=5,
+            best_of=5,
+            condition_on_previous_text=False,
+            # keep VAD but don't let short thinking-pauses drop words
             vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 300},
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
     finally:
@@ -115,7 +158,7 @@ async def transcribe(
 
     duration_ms = int((time.perf_counter() - start) * 1000)
     log.info("Transcribed %d bytes in %d ms (device=%s): %r", len(data), duration_ms, _device, text[:120])
-    return {"text": text, "duration_ms": duration_ms, "model": MODEL_SIZE}
+    return {"text": text, "duration_ms": duration_ms, "model": _loaded_model}
 
 
 if __name__ == "__main__":

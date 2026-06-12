@@ -35,10 +35,15 @@ export interface PipelineDeps {
 
   /** sidecar.ts — POST wav to the local faster-whisper server. */
   transcribe?: (wav: ArrayBuffer, settings: OwenFlowSettings) => Promise<TranscribeResult>
-  /** cleanup.ts — optional MiniMax formatting pass (6s timeout, raw fallback). */
+  /** cleanup.ts — mode-aware MiniMax pass (6s/12s timeout, raw fallback). */
   cleanup?: (raw: string, settings: OwenFlowSettings) => Promise<string>
   /** injector.ts — clipboard-swap paste into the focused app. */
   inject?: (text: string) => Promise<void>
+  /**
+   * tagger.ts — fire-and-forget background topic-tagging of the appended
+   * history entry. Called AFTER inject; must never block or throw.
+   */
+  autoTag?: (ts: number, transcript: string) => void
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -104,10 +109,13 @@ export async function stopDictation(): Promise<void> {
     return
   }
 
-  // 3. Optional AI cleanup — never blocks (cleanup() already falls back to
-  //    raw on any error, but guard here too in case a mock/dep throws).
+  // 3. AI cleanup / mode rewrite — never blocks (cleanup() already falls back
+  //    to raw on any error, but guard here too in case a mock/dep throws).
+  //    Normal mode respects the cleanupEnabled toggle; vibe/formal ALWAYS go
+  //    through cleanup() (which falls back to raw when no API key is set).
   let cleaned = raw
-  if (settings.cleanupEnabled && deps.cleanup) {
+  const wantsCleanup = settings.flowMode !== 'normal' || settings.cleanupEnabled
+  if (wantsCleanup && deps.cleanup) {
     try {
       cleaned = (await deps.cleanup(raw, settings)) || raw
     } catch {
@@ -125,14 +133,21 @@ export async function stopDictation(): Promise<void> {
     await deps.inject(final)
   } catch (err) {
     // Text is left on the clipboard by the injector — still record history.
-    appendEntry(raw, final, startedAt)
+    appendEntry(raw, final, startedAt, settings.flowMode)
     failPill(err instanceof Error ? err.message : 'Paste failed')
     return
   }
 
-  appendEntry(raw, final, startedAt)
+  const ts = appendEntry(raw, final, startedAt, settings.flowMode)
   deps.setPillState({ state: 'done' })
   scheduleHide(1200)
+
+  // 6. Background auto-tagging — fire-and-forget AFTER inject, never delays paste.
+  try {
+    deps.autoTag?.(ts, final)
+  } catch {
+    /* tagging is best-effort */
+  }
 }
 
 /**
@@ -150,7 +165,9 @@ export async function simulateDictation(): Promise<void> {
     ts: Date.now(),
     raw: 'this is a simulated dictation um with some filler words',
     final: 'This is a simulated dictation with some filler words.',
-    durationMs: 2700
+    durationMs: 2700,
+    tags: ['demo'],
+    mode: deps.getSettings().flowMode
   })
   deps.setPillState({ state: 'done' })
   dictating = false
@@ -159,13 +176,17 @@ export async function simulateDictation(): Promise<void> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function appendEntry(raw: string, final: string, startedAt: number): void {
+function appendEntry(raw: string, final: string, startedAt: number, mode: string): number {
+  const ts = Date.now()
   deps?.appendHistory({
-    ts: Date.now(),
+    ts,
     raw,
     final,
-    durationMs: Date.now() - startedAt
+    durationMs: ts - startedAt,
+    tags: [],
+    mode
   })
+  return ts
 }
 
 function failPill(message: string, hideAfterMs = 3000): void {

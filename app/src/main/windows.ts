@@ -97,6 +97,10 @@ export async function createPillWindow(): Promise<BrowserWindow> {
   return pillWindow
 }
 
+export function getPillWindow(): BrowserWindow | null {
+  return pillWindow
+}
+
 /** Push a pill state to the overlay; shows/hides the window as appropriate. */
 export function setPillState(state: PillState): void {
   if (!pillWindow || pillWindow.isDestroyed()) return

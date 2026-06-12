@@ -7,6 +7,7 @@ import type { OwenFlowSettings } from '../shared/types'
 export const DEFAULT_SETTINGS: OwenFlowSettings = {
   hotkey: 'RightCtrl',
   mode: 'hold',
+  flowMode: 'normal',
   model: 'small',
   language: '',
   cleanupEnabled: false,
@@ -31,9 +32,10 @@ const store = new Store<OwenFlowSettings>({
   schema: {
     hotkey: { type: 'string', default: 'RightCtrl' },
     mode: { type: 'string', enum: ['hold', 'toggle'], default: 'hold' },
+    flowMode: { type: 'string', enum: ['normal', 'vibe', 'formal'], default: 'normal' },
     model: {
       type: 'string',
-      enum: ['tiny', 'base', 'small', 'medium', 'large-v3'],
+      enum: ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'],
       default: 'small'
     },
     language: { type: 'string', default: '' },
