@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { HistoryEntry, TagCount } from '../shared/types'
+import type { FolderCount, HistoryEntry, TagCount } from '../shared/types'
 
 function historyPath(): string {
   return join(app.getPath('userData'), 'history.jsonl')
@@ -19,6 +19,16 @@ export function normalizeTags(tags: unknown): string[] {
   return out
 }
 
+/**
+ * Canonical folder form: trimmed, capped at 40 chars (display keeps case).
+ * Returns undefined for empty/non-string input ("unfiled").
+ */
+export function normalizeFolder(folder: unknown): string | undefined {
+  if (typeof folder !== 'string') return undefined
+  const clean = folder.trim().slice(0, 40).trim()
+  return clean || undefined
+}
+
 function parseLine(line: string): HistoryEntry | null {
   const trimmed = line.trim()
   if (!trimmed) return null
@@ -27,6 +37,8 @@ function parseLine(line: string): HistoryEntry | null {
     if (typeof parsed.ts !== 'number') return null
     // Legacy lines have no tags field — treat as [].
     parsed.tags = normalizeTags(parsed.tags)
+    // Legacy lines have no folder field — undefined means unfiled.
+    parsed.folder = normalizeFolder(parsed.folder)
     return parsed
   } catch {
     return null // skip corrupt lines rather than failing the whole list
@@ -87,6 +99,85 @@ export function listTags(): TagCount[] {
   return [...counts.entries()]
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+}
+
+/**
+ * Move the entry with timestamp `ts` into a folder (null/empty unfiles it).
+ * Same safe JSONL read-modify-write as updateTags: only the matching line is
+ * rewritten, unknown/corrupt lines are preserved, temp-file rename lands the
+ * result atomically. Returns true if the entry was found.
+ */
+export function setFolder(ts: number, folder: string | null): boolean {
+  const file = historyPath()
+  if (!existsSync(file)) return false
+  const clean = folder === null ? undefined : normalizeFolder(folder)
+  let found = false
+  const lines = readFileSync(file, 'utf8').split('\n')
+  const next = lines.map((line) => {
+    if (found) return line
+    const parsed = parseLine(line)
+    if (!parsed || parsed.ts !== ts) return line
+    found = true
+    const { folder: _drop, ...rest } = parsed
+    return JSON.stringify(clean === undefined ? rest : { ...rest, folder: clean })
+  })
+  if (!found) return false
+  const tmp = `${file}.tmp`
+  writeFileSync(tmp, next.join('\n'), 'utf8')
+  renameSync(tmp, file)
+  return true
+}
+
+/**
+ * Distinct folder names with entry counts, alphabetical. Folders exist
+ * implicitly through entries — no separate registry file.
+ */
+export function listFolders(): FolderCount[] {
+  const counts = new Map<string, number>()
+  for (const entry of list(Number.MAX_SAFE_INTEGER)) {
+    if (entry.folder) counts.set(entry.folder, (counts.get(entry.folder) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([folder, count]) => ({ folder, count }))
+    .sort((a, b) => a.folder.localeCompare(b.folder))
+}
+
+/**
+ * Rewrite every line whose folder matches `match`, setting it to `nextFolder`
+ * (undefined unfiles). Returns how many entries changed.
+ */
+function rewriteFolder(match: string, nextFolder: string | undefined): number {
+  const file = historyPath()
+  if (!existsSync(file)) return 0
+  let changed = 0
+  const lines = readFileSync(file, 'utf8').split('\n')
+  const next = lines.map((line) => {
+    const parsed = parseLine(line)
+    if (!parsed || parsed.folder !== match) return line
+    changed++
+    const { folder: _drop, ...rest } = parsed
+    return JSON.stringify(nextFolder === undefined ? rest : { ...rest, folder: nextFolder })
+  })
+  if (changed === 0) return 0
+  const tmp = `${file}.tmp`
+  writeFileSync(tmp, next.join('\n'), 'utf8')
+  renameSync(tmp, file)
+  return changed
+}
+
+/** Rename a folder across all its entries. Returns how many entries changed. */
+export function renameFolder(from: string, to: string): number {
+  const cleanFrom = normalizeFolder(from)
+  const cleanTo = normalizeFolder(to)
+  if (!cleanFrom || !cleanTo || cleanFrom === cleanTo) return 0
+  return rewriteFolder(cleanFrom, cleanTo)
+}
+
+/** Delete a folder: unfile all its entries. Returns how many entries changed. */
+export function deleteFolder(name: string): number {
+  const clean = normalizeFolder(name)
+  if (!clean) return 0
+  return rewriteFolder(clean, undefined)
 }
 
 /** Delete all history. */

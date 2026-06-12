@@ -1,10 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
+  AppInfo,
+  FolderCount,
   HistoryEntry,
   LevelFrame,
   OwenFlowApi,
   OwenFlowSettings,
   PillState,
+  SidecarStatusInfo,
   TagCount
 } from '../shared/types'
 import { IPC } from '../shared/types'
@@ -28,7 +31,14 @@ const api: OwenFlowApi = {
     clear: (): Promise<void> => ipcRenderer.invoke(IPC.historyClear),
     updateTags: (ts: number, tags: string[]): Promise<boolean> =>
       ipcRenderer.invoke(IPC.historyUpdateTags, ts, tags),
-    tags: (): Promise<TagCount[]> => ipcRenderer.invoke(IPC.historyTags)
+    tags: (): Promise<TagCount[]> => ipcRenderer.invoke(IPC.historyTags),
+    setFolder: (ts: number, folder: string | null): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.historySetFolder, ts, folder),
+    folders: (): Promise<FolderCount[]> => ipcRenderer.invoke(IPC.historyFolders),
+    renameFolder: (from: string, to: string): Promise<number> =>
+      ipcRenderer.invoke(IPC.historyRenameFolder, from, to),
+    deleteFolder: (name: string): Promise<number> =>
+      ipcRenderer.invoke(IPC.historyDeleteFolder, name)
   },
   pill: {
     onState: (cb: (state: PillState) => void) => subscribe<[PillState]>(IPC.pillState, cb),
@@ -56,6 +66,14 @@ const api: OwenFlowApi = {
   },
   debug: {
     simulateDictation: (): Promise<void> => ipcRenderer.invoke(IPC.debugSimulate)
+  },
+  appinfo: {
+    get: (): Promise<AppInfo> => ipcRenderer.invoke(IPC.appInfo)
+  },
+  sidecar: {
+    get: (): Promise<SidecarStatusInfo> => ipcRenderer.invoke(IPC.sidecarStatusGet),
+    onStatus: (cb: (info: SidecarStatusInfo) => void) =>
+      subscribe<[SidecarStatusInfo]>(IPC.sidecarStatus, cb)
   }
 }
 

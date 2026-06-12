@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -8,21 +8,64 @@
     />
     <title>OwenFlow Settings</title>
     <style>
+      /* ─── Theme: dark (default) ──────────────────────────────────────── */
       :root {
-        --bg: #0d0d14;
-        --panel: #17171f;
-        --panel-2: #1e1e2a;
+        --bg: #131011;
+        --sidebar-bg: #0f0c0d;
+        --panel: #1b1517;
+        --panel-2: #241c1e;
         --border: rgba(255, 255, 255, 0.08);
-        --text: #ececf1;
-        --text-dim: #9a9aa6;
-        --accent: #8b5cf6;
-        --accent-2: #3b82f6;
-        --accent-grad: linear-gradient(135deg, #8b5cf6, #3b82f6);
+        --text: #f3edec;
+        --text-dim: #a59a97;
+        --accent: #ff2d3a;
+        --accent-2: #ff7a45;
+        --accent-grad: linear-gradient(135deg, #ff2d3a, #ff7a45);
+        --accent-soft: rgba(255, 45, 58, 0.14);
+        --accent-softer: rgba(255, 45, 58, 0.08);
+        --accent-ring: rgba(255, 45, 58, 0.2);
+        --accent-glow: rgba(255, 45, 58, 0.32);
+        --tag-bg: rgba(255, 45, 58, 0.13);
+        --tag-border: rgba(255, 45, 58, 0.42);
+        --tag-text: #ffb3b8;
+        --tag-text-strong: #ffd4d6;
+        --folder-active-bg: rgba(255, 255, 255, 0.07);
+        --folder-active-border: rgba(255, 255, 255, 0.28);
         --green: #32d74b;
-        --red: #ff453a;
+        --danger: #ff453a;
+        --card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        --body-glow: rgba(255, 45, 58, 0.1);
         --radius: 12px;
         --font-ui: 'Space Grotesk', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
         --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+      }
+      /* ─── Theme: light (warm white, brand red pops) ──────────────────── */
+      [data-theme='light'] {
+        --bg: #faf9f7;
+        --sidebar-bg: #f3efeb;
+        --panel: #ffffff;
+        --panel-2: #f5f1ed;
+        --border: rgba(35, 24, 20, 0.12);
+        --text: #231c1a;
+        --text-dim: #7c716c;
+        --accent: #d91f2a;
+        --accent-2: #e85d28;
+        --accent-grad: linear-gradient(135deg, #dd1f2b, #ef6230);
+        --accent-soft: rgba(217, 31, 42, 0.1);
+        --accent-softer: rgba(217, 31, 42, 0.06);
+        --accent-ring: rgba(217, 31, 42, 0.16);
+        --accent-glow: rgba(217, 31, 42, 0.22);
+        --tag-bg: rgba(217, 31, 42, 0.08);
+        --tag-border: rgba(217, 31, 42, 0.35);
+        --tag-text: #b3121f;
+        --tag-text-strong: #8f0e19;
+        --folder-active-bg: #ece5de;
+        --folder-active-border: rgba(35, 24, 20, 0.28);
+        --green: #1d9b45;
+        --danger: #d92b25;
+        --card-inset: none;
+        --menu-shadow: 0 8px 24px rgba(40, 25, 20, 0.16);
+        --body-glow: rgba(217, 31, 42, 0.06);
       }
       * {
         margin: 0;
@@ -40,36 +83,39 @@
       }
       body {
         background:
-          radial-gradient(520px 220px at 50% -80px, rgba(139, 92, 246, 0.14), transparent 70%),
+          radial-gradient(520px 220px at 60% -80px, var(--body-glow), transparent 70%),
           var(--bg);
       }
       #app {
         display: flex;
-        flex-direction: column;
         height: 100vh;
       }
 
-      header {
+      /* ─── Sidebar shell ──────────────────────────────────────────────── */
+      .sidebar {
+        flex: 0 0 184px;
         display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 18px 24px 0;
+        flex-direction: column;
+        gap: 4px;
+        padding: 18px 10px 12px;
+        background: var(--sidebar-bg);
+        border-right: 1px solid var(--border);
       }
       .brand {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-right: 8px;
+        gap: 9px;
+        padding: 0 8px 14px;
       }
       .brand svg {
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
         display: block;
-        border-radius: 7px;
-        box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35);
+        border-radius: 8px;
+        box-shadow: 0 2px 10px var(--accent-glow);
       }
       .brand h1 {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         letter-spacing: 0.01em;
       }
@@ -79,47 +125,109 @@
         background-clip: text;
         color: transparent;
       }
-      .tabs {
+      .nav-item {
         display: flex;
-        gap: 4px;
-        background: rgba(23, 23, 31, 0.8);
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 3px;
-        backdrop-filter: blur(8px);
-      }
-      .tab {
-        border: none;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        border: 1px solid transparent;
         background: transparent;
         color: var(--text-dim);
         font: inherit;
         font-weight: 600;
-        padding: 6px 18px;
-        border-radius: 999px;
+        font-size: 13px;
+        text-align: left;
+        padding: 8px 10px;
+        border-radius: 9px;
         cursor: pointer;
         transition: all 120ms ease;
       }
-      .tab:hover {
-        color: var(--text);
+      .nav-item svg {
+        width: 15px;
+        height: 15px;
+        flex: 0 0 auto;
+        opacity: 0.85;
       }
-      .tab.active {
+      .nav-item:hover {
+        color: var(--text);
+        background: var(--accent-softer);
+      }
+      .nav-item.active {
         background: var(--accent-grad);
+        border-color: transparent;
         color: #fff;
-        box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35);
+        box-shadow: 0 2px 10px var(--accent-glow);
+      }
+      .sidebar-foot {
+        margin-top: auto;
+        padding: 10px 4px 0;
+      }
+      #sidecar-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        max-width: 100%;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--text-dim);
+        letter-spacing: 0.02em;
+      }
+      #sidecar-pill .dot {
+        flex: 0 0 auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--text-dim);
+        transition: all 200ms ease;
+      }
+      #sidecar-pill[data-status='ready'] .dot {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+      }
+      #sidecar-pill[data-status='starting'] .dot {
+        background: var(--accent-2);
+        box-shadow: 0 0 6px var(--accent-2);
+      }
+      #sidecar-pill[data-status='error'] .dot {
+        background: var(--danger);
+        box-shadow: 0 0 6px var(--danger);
+      }
+      #sidecar-status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
+      /* ─── Content ────────────────────────────────────────────────────── */
       main {
         flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .content {
+        flex: 1;
         overflow-y: auto;
-        padding: 20px 24px 28px;
+        padding: 20px 22px 16px;
       }
       .page {
         display: none;
-        max-width: 640px;
+        max-width: 560px;
         margin: 0 auto;
       }
       .page.active {
         display: block;
+      }
+      .page-title {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        margin-bottom: 14px;
       }
 
       .card {
@@ -129,7 +237,11 @@
         border-radius: var(--radius);
         padding: 18px 20px;
         margin-bottom: 16px;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        box-shadow: var(--card-inset);
+      }
+      [data-theme='light'] .card {
+        background: var(--panel);
+        box-shadow: 0 1px 3px rgba(40, 25, 20, 0.05);
       }
       .card h2 {
         font-family: var(--font-mono);
@@ -187,7 +299,7 @@
       select:focus,
       textarea:focus {
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
       textarea {
         width: 100%;
@@ -203,11 +315,48 @@
         accent-color: var(--accent);
       }
 
+      /* theme segmented picker */
+      .seg {
+        display: inline-flex;
+        gap: 3px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 3px;
+      }
+      .seg-opt {
+        border: none;
+        background: transparent;
+        color: var(--text-dim);
+        font: inherit;
+        font-weight: 600;
+        font-size: 12.5px;
+        padding: 5px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: all 120ms ease;
+      }
+      .seg-opt:hover {
+        color: var(--text);
+      }
+      .seg-opt.active {
+        background: var(--accent-grad);
+        color: #fff;
+        box-shadow: 0 2px 8px var(--accent-glow);
+      }
+
+      /* actions footer */
       .actions {
+        flex: 0 0 auto;
         display: flex;
         align-items: center;
         gap: 12px;
-        margin-top: 4px;
+        padding: 12px 22px 16px;
+        border-top: 1px solid var(--border);
+        background: var(--bg);
+      }
+      .actions.hidden {
+        display: none;
       }
       button.primary,
       button.ghost,
@@ -224,11 +373,11 @@
         background: var(--accent-grad);
         border-color: transparent;
         color: #fff;
-        box-shadow: 0 2px 12px rgba(139, 92, 246, 0.3);
+        box-shadow: 0 2px 12px var(--accent-glow);
       }
       button.primary:hover {
-        filter: brightness(1.12);
-        box-shadow: 0 3px 16px rgba(139, 92, 246, 0.45);
+        filter: brightness(1.1);
+        box-shadow: 0 3px 16px var(--accent-glow);
       }
       button.ghost {
         background: var(--panel-2);
@@ -239,11 +388,11 @@
       }
       button.danger {
         background: transparent;
-        color: var(--red);
-        border-color: rgba(255, 69, 58, 0.35);
+        color: var(--danger);
+        border-color: var(--accent-ring);
       }
       button.danger:hover {
-        background: rgba(255, 69, 58, 0.1);
+        background: var(--accent-softer);
       }
       #save-status {
         color: var(--green);
@@ -255,7 +404,7 @@
         opacity: 1;
       }
 
-      /* history */
+      /* ─── History ────────────────────────────────────────────────────── */
       #history-toolbar {
         display: flex;
         justify-content: space-between;
@@ -275,7 +424,7 @@
         display: flex;
         gap: 14px;
         align-items: flex-start;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        box-shadow: var(--card-inset);
       }
       .entry .body {
         flex: 1;
@@ -309,15 +458,15 @@
         border-color: var(--accent);
       }
       .entry button.copy.failed {
-        color: var(--red);
-        border-color: rgba(255, 69, 58, 0.45);
+        color: var(--danger);
+        border-color: var(--accent-ring);
       }
       .empty {
         color: var(--text-dim);
         text-align: center;
         padding: 48px 0;
       }
-      /* tags */
+      /* tags (brand-red tinted — distinct from neutral folder chips) */
       #history-toolbar .toolbar-left {
         display: flex;
         align-items: center;
@@ -332,7 +481,7 @@
         align-items: center;
         gap: 6px;
         background:
-          linear-gradient(180deg, rgba(139, 92, 246, 0.18), rgba(59, 130, 246, 0.1)),
+          linear-gradient(180deg, var(--accent-soft), var(--accent-softer)),
           var(--panel-2);
         border: 1px solid var(--accent);
         color: var(--text);
@@ -367,9 +516,9 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: rgba(139, 92, 246, 0.14);
-        border: 1px solid rgba(139, 92, 246, 0.4);
-        color: #c4b5fd;
+        background: var(--tag-bg);
+        border: 1px solid var(--tag-border);
+        color: var(--tag-text);
         font-family: var(--font-mono);
         font-size: 10.5px;
         letter-spacing: 0.02em;
@@ -380,15 +529,17 @@
       }
       .tag-chip:hover {
         border-color: var(--accent);
-        background: rgba(139, 92, 246, 0.24);
-        color: #ddd6fe;
+        background: var(--accent-soft);
+        color: var(--tag-text-strong);
       }
       .tag-chip .x {
-        color: rgba(196, 181, 253, 0.55);
+        color: var(--tag-text);
+        opacity: 0.6;
         padding-left: 2px;
       }
       .tag-chip .x:hover {
-        color: var(--red);
+        color: var(--danger);
+        opacity: 1;
       }
       .tag-add {
         background: transparent;
@@ -434,7 +585,7 @@
         background: var(--panel-2);
         border: 1px solid var(--border);
         border-radius: 8px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--menu-shadow);
         padding: 3px;
       }
       .tag-suggest.show {
@@ -451,8 +602,142 @@
       }
       .tag-suggest .item:hover,
       .tag-suggest .item.hl {
-        background: rgba(139, 92, 246, 0.18);
-        color: #ddd6fe;
+        background: var(--accent-soft);
+        color: var(--tag-text-strong);
+      }
+      /* folders (neutral chips — separate axis from red tags) */
+      #folder-rail {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .folder-chip {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 4px 10px;
+        cursor: pointer;
+        user-select: none;
+        transition: all 120ms ease;
+      }
+      .folder-chip:hover {
+        color: var(--text);
+        border-color: var(--folder-active-border);
+      }
+      .folder-chip.active {
+        background: var(--folder-active-bg);
+        border-color: var(--folder-active-border);
+        color: var(--text);
+      }
+      .folder-chip .count {
+        color: var(--text-dim);
+        font-size: 10px;
+      }
+      .folder-chip .menu-btn {
+        color: var(--text-dim);
+        padding: 0 1px;
+        line-height: 1;
+      }
+      .folder-chip .menu-btn:hover {
+        color: var(--text);
+      }
+      .folder-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        z-index: 20;
+        min-width: 96px;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--menu-shadow);
+        padding: 3px;
+      }
+      .folder-menu .item {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-dim);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .folder-menu .item:hover {
+        background: var(--folder-active-bg);
+        color: var(--text);
+      }
+      .folder-menu .item.danger:hover {
+        background: var(--accent-softer);
+        color: var(--danger);
+      }
+      .folder-new {
+        background: transparent;
+        border: 1px dashed var(--border);
+        color: var(--text-dim);
+        font: inherit;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 4px 10px;
+        cursor: pointer;
+        transition: all 120ms ease;
+      }
+      .folder-new:hover {
+        color: var(--text);
+        border-color: var(--folder-active-border);
+      }
+      .folder-input {
+        background: var(--panel-2);
+        border: 1px solid var(--folder-active-border);
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 4px 10px;
+        width: 140px;
+        min-width: 0;
+        outline: none;
+      }
+      .entry .ts {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .entry .folder-select {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        font: inherit;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        border-radius: 7px;
+        padding: 2px 6px;
+        min-width: 0;
+        max-width: 200px;
+        outline: none;
+        cursor: pointer;
+        transition: all 120ms ease;
+      }
+      .entry .folder-select:hover,
+      .entry .folder-select:focus {
+        color: var(--text);
+        border-color: var(--folder-active-border);
+      }
+      .entry .folder-input {
+        font-size: 10.5px;
+        padding: 2px 8px;
+        border-radius: 7px;
+        width: 130px;
       }
       .entry .mode-badge {
         color: var(--text-dim);
@@ -461,7 +746,7 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
-      /* mode cards */
+      /* ─── Flow-mode cards ────────────────────────────────────────────── */
       .mode-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -480,7 +765,7 @@
         transition: all 130ms ease;
       }
       .mode-card:hover {
-        border-color: rgba(139, 92, 246, 0.5);
+        border-color: var(--accent);
       }
       .mode-card .mode-name {
         display: block;
@@ -509,9 +794,9 @@
       .mode-card.selected {
         border-color: var(--accent);
         background:
-          linear-gradient(180deg, rgba(139, 92, 246, 0.12), rgba(59, 130, 246, 0.06)),
+          linear-gradient(180deg, var(--accent-soft), var(--accent-softer)),
           var(--panel-2);
-        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.16);
+        box-shadow: 0 0 0 3px var(--accent-ring);
       }
       .mode-card.selected .mode-name {
         background: var(--accent-grad);
@@ -522,177 +807,331 @@
       .mode-card.selected .mode-tag {
         background: var(--accent-grad);
         border-color: transparent;
-        box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+        box-shadow: 0 0 8px var(--accent);
+      }
+      /* ─── About ──────────────────────────────────────────────────────── */
+      .about-hero {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .about-hero svg {
+        width: 56px;
+        height: 56px;
+        display: block;
+        border-radius: 14px;
+        box-shadow: 0 4px 18px var(--accent-glow);
+      }
+      .about-hero .name {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .about-hero .name span {
+        background: var(--accent-grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .about-hero .version {
+        color: var(--text-dim);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .about-blurb {
+        color: var(--text-dim);
+        line-height: 1.55;
+        margin-bottom: 4px;
+      }
+      .mono-value {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        color: var(--text-dim);
+        word-break: break-all;
+        text-align: right;
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <header>
+      <!-- ─── Sidebar ─── -->
+      <aside class="sidebar">
         <div class="brand">
           <svg viewBox="0 0 64 64" aria-hidden="true">
             <defs>
-              <linearGradient id="mic-grad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#8b5cf6" />
-                <stop offset="1" stop-color="#3b82f6" />
+              <linearGradient id="of-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#ff2d3a" />
+                <stop offset="1" stop-color="#ff7a45" />
               </linearGradient>
             </defs>
-            <rect width="64" height="64" rx="14" fill="#0d0d14" />
-            <rect x="24" y="12" width="16" height="22" rx="8" fill="url(#mic-grad)" />
+            <rect width="64" height="64" rx="14" fill="#16100f" />
             <path
-              d="M17 28a15 15 0 0 0 30 0"
+              d="M16.5 25 A17 17 0 0 1 47.5 25 M16.5 39 A17 17 0 0 0 47.5 39"
               fill="none"
-              stroke="url(#mic-grad)"
-              stroke-width="5"
+              stroke="url(#of-grad)"
+              stroke-width="7"
               stroke-linecap="round"
             />
-            <path
-              d="M32 43v6M23 52h18"
-              fill="none"
-              stroke="url(#mic-grad)"
-              stroke-width="5"
-              stroke-linecap="round"
-            />
+            <rect x="22.5" y="27" width="4" height="10" rx="2" fill="url(#of-grad)" />
+            <rect x="30" y="23" width="4" height="18" rx="2" fill="url(#of-grad)" />
+            <rect x="37.5" y="27" width="4" height="10" rx="2" fill="url(#of-grad)" />
           </svg>
           <h1>Owen<span>Flow</span></h1>
         </div>
-        <div class="tabs">
-          <button class="tab active" data-tab="settings">Settings</button>
-          <button class="tab" data-tab="history">History</button>
+
+        <button class="nav-item active" data-section="general">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+            <circle cx="16" cy="7" r="2.4" />
+            <circle cx="8" cy="17" r="2.4" />
+          </svg>
+          General
+        </button>
+        <button class="nav-item" data-section="modes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+          </svg>
+          Modes
+        </button>
+        <button class="nav-item" data-section="dictionary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 4h11a3 3 0 0 1 3 3v13H7a2 2 0 0 1-2-2V4z" />
+            <path d="M5 16h14" />
+          </svg>
+          Dictionary
+        </button>
+        <button class="nav-item" data-section="history">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3.5 2" />
+          </svg>
+          History
+        </button>
+        <button class="nav-item" data-section="about">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v6M12 7.2v.2" />
+          </svg>
+          About
+        </button>
+
+        <div class="sidebar-foot">
+          <div id="sidecar-pill" data-status="stopped" title="Local Whisper sidecar status">
+            <span class="dot"></span>
+            <span id="sidecar-status-text">sidecar…</span>
+          </div>
         </div>
-      </header>
+      </aside>
 
+      <!-- ─── Content ─── -->
       <main>
-        <!-- ─── Settings tab ─── -->
-        <section class="page active" id="page-settings">
-          <div class="card">
-            <h2>Mode</h2>
-            <div class="mode-grid" id="mode-grid">
-              <button type="button" class="mode-card" data-flow-mode="normal">
-                <span class="mode-tag"></span>
-                <span class="mode-name">Normal</span>
-                <span class="mode-desc">types exactly what you say</span>
-              </button>
-              <button type="button" class="mode-card" data-flow-mode="vibe">
-                <span class="mode-tag"></span>
-                <span class="mode-name">Vibe Coding</span>
-                <span class="mode-desc">restructures speech into a refined AI prompt</span>
-              </button>
-              <button type="button" class="mode-card" data-flow-mode="formal">
-                <span class="mode-tag"></span>
-                <span class="mode-name">Formal</span>
-                <span class="mode-desc">client-ready professional tone</span>
-              </button>
+        <div class="content">
+          <!-- ─── General ─── -->
+          <section class="page active" id="page-general">
+            <div class="page-title">General</div>
+            <div class="card">
+              <h2>Dictation</h2>
+              <div class="row">
+                <label class="title" for="f-hotkey">
+                  Push-to-talk hotkey
+                  <span class="hint">uiohook keycode name, e.g. RightCtrl, F13</span>
+                </label>
+                <input type="text" id="f-hotkey" spellcheck="false" />
+              </div>
+              <div class="row">
+                <label class="title" for="f-mode">
+                  Mode
+                  <span class="hint">Hold to talk, or press once to start / again to stop</span>
+                </label>
+                <select id="f-mode">
+                  <option value="hold">Hold</option>
+                  <option value="toggle">Toggle</option>
+                </select>
+              </div>
+              <div class="row">
+                <label class="title" for="f-model">
+                  Whisper model
+                  <span class="hint">Bigger = more accurate, slower</span>
+                </label>
+                <select id="f-model">
+                  <option value="tiny">tiny</option>
+                  <option value="base">base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v3">large-v3</option>
+                  <option value="large-v3-turbo">large-v3-turbo</option>
+                </select>
+              </div>
+              <div class="row">
+                <label class="title" for="f-language">
+                  Language
+                  <span class="hint">ISO code like "en"; empty = auto-detect</span>
+                </label>
+                <input type="text" id="f-language" placeholder="auto" spellcheck="false" />
+              </div>
             </div>
-          </div>
 
-          <div class="card">
-            <h2>Dictation</h2>
-            <div class="row">
-              <label class="title" for="f-hotkey">
-                Push-to-talk hotkey
-                <span class="hint">uiohook keycode name, e.g. RightCtrl, F13</span>
-              </label>
-              <input type="text" id="f-hotkey" spellcheck="false" />
+            <div class="card">
+              <h2>Appearance</h2>
+              <div class="row">
+                <label class="title">
+                  Theme
+                  <span class="hint">System follows your OS setting live</span>
+                </label>
+                <div class="seg" id="theme-seg">
+                  <button type="button" class="seg-opt" data-theme-opt="dark">Dark</button>
+                  <button type="button" class="seg-opt" data-theme-opt="light">Light</button>
+                  <button type="button" class="seg-opt" data-theme-opt="system">System</button>
+                </div>
+              </div>
             </div>
-            <div class="row">
-              <label class="title" for="f-mode">
-                Mode
-                <span class="hint">Hold to talk, or press once to start / again to stop</span>
-              </label>
-              <select id="f-mode">
-                <option value="hold">Hold</option>
-                <option value="toggle">Toggle</option>
-              </select>
-            </div>
-            <div class="row">
-              <label class="title" for="f-model">
-                Whisper model
-                <span class="hint">Bigger = more accurate, slower</span>
-              </label>
-              <select id="f-model">
-                <option value="tiny">tiny</option>
-                <option value="base">base</option>
-                <option value="small">small</option>
-                <option value="medium">medium</option>
-                <option value="large-v3">large-v3</option>
-                <option value="large-v3-turbo">large-v3-turbo</option>
-              </select>
-            </div>
-            <div class="row">
-              <label class="title" for="f-language">
-                Language
-                <span class="hint">ISO code like "en"; empty = auto-detect</span>
-              </label>
-              <input type="text" id="f-language" placeholder="auto" spellcheck="false" />
-            </div>
-          </div>
 
-          <div class="card">
-            <h2>AI cleanup</h2>
-            <div class="row">
-              <label class="title" for="f-cleanup">
-                Cleanup pass in Normal mode
-                <span class="hint">MiniMax removes fillers and fixes punctuation; raw fallback on error</span>
+            <div class="card">
+              <h2>System</h2>
+              <div class="row">
+                <label class="title" for="f-startup">Launch on startup</label>
+                <input type="checkbox" id="f-startup" />
+              </div>
+            </div>
+          </section>
+
+          <!-- ─── Modes ─── -->
+          <section class="page" id="page-modes">
+            <div class="page-title">Modes</div>
+            <div class="card">
+              <h2>Flow mode</h2>
+              <div class="mode-grid" id="mode-grid">
+                <button type="button" class="mode-card" data-flow-mode="normal">
+                  <span class="mode-tag"></span>
+                  <span class="mode-name">Normal</span>
+                  <span class="mode-desc">types exactly what you say</span>
+                </button>
+                <button type="button" class="mode-card" data-flow-mode="vibe">
+                  <span class="mode-tag"></span>
+                  <span class="mode-name">Vibe Coding</span>
+                  <span class="mode-desc">restructures speech into a refined AI prompt</span>
+                </button>
+                <button type="button" class="mode-card" data-flow-mode="formal">
+                  <span class="mode-tag"></span>
+                  <span class="mode-name">Formal</span>
+                  <span class="mode-desc">client-ready professional tone</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>AI cleanup</h2>
+              <div class="row">
+                <label class="title" for="f-cleanup">
+                  Cleanup pass in Normal mode
+                  <span class="hint">MiniMax removes fillers and fixes punctuation; raw fallback on error</span>
+                </label>
+                <input type="checkbox" id="f-cleanup" />
+              </div>
+              <div class="row" id="minimax-key-row">
+                <label class="title" for="f-minimax-key">
+                  MiniMax API key
+                  <span class="hint">Vibe Coding and Formal modes always use this key (raw fallback if empty)</span>
+                </label>
+                <input type="password" id="f-minimax-key" spellcheck="false" />
+              </div>
+              <div class="row" id="minimax-group-row">
+                <label class="title" for="f-minimax-group">MiniMax group ID</label>
+                <input type="text" id="f-minimax-group" spellcheck="false" />
+              </div>
+            </div>
+          </section>
+
+          <!-- ─── Dictionary ─── -->
+          <section class="page" id="page-dictionary">
+            <div class="page-title">Dictionary</div>
+            <div class="card">
+              <h2>Custom vocabulary</h2>
+              <label class="hint" for="f-dictionary" style="margin-bottom: 8px">
+                One entry per line. Plain words bias recognition (e.g. <b>Hermes</b>); use
+                <b>wrong=&gt;right</b> for replacements (e.g. <b>owen flow=&gt;OwenFlow</b>).
               </label>
-              <input type="checkbox" id="f-cleanup" />
+              <textarea id="f-dictionary" spellcheck="false" placeholder="Hermes&#10;Qdrant&#10;owen flow=>OwenFlow"></textarea>
             </div>
-            <div class="row" id="minimax-key-row">
-              <label class="title" for="f-minimax-key">
-                MiniMax API key
-                <span class="hint">Vibe Coding and Formal modes always use this key (raw fallback if empty)</span>
-              </label>
-              <input type="password" id="f-minimax-key" spellcheck="false" />
-            </div>
-            <div class="row" id="minimax-group-row">
-              <label class="title" for="f-minimax-group">MiniMax group ID</label>
-              <input type="text" id="f-minimax-group" spellcheck="false" />
-            </div>
-          </div>
+          </section>
 
-          <div class="card">
-            <h2>Dictionary</h2>
-            <label class="hint" for="f-dictionary" style="margin-bottom: 8px">
-              One entry per line. Plain words bias recognition (e.g. <b>Hermes</b>); use
-              <b>wrong=&gt;right</b> for replacements (e.g. <b>owen flow=&gt;OwenFlow</b>).
-            </label>
-            <textarea id="f-dictionary" spellcheck="false" placeholder="Hermes&#10;Qdrant&#10;owen flow=>OwenFlow"></textarea>
-          </div>
-
-          <div class="card">
-            <h2>System</h2>
-            <div class="row">
-              <label class="title" for="f-startup">Launch on startup</label>
-              <input type="checkbox" id="f-startup" />
+          <!-- ─── History ─── -->
+          <section class="page" id="page-history">
+            <div class="page-title">History</div>
+            <div id="history-toolbar">
+              <div class="toolbar-left">
+                <span id="history-count"></span>
+                <select id="tag-filter" title="Filter by tag">
+                  <option value="">all tags</option>
+                </select>
+                <span id="active-filter">
+                  <span id="active-filter-name"></span>
+                  <button id="btn-clear-filter" title="Clear tag filter">✕</button>
+                </span>
+              </div>
+              <button class="danger" id="btn-clear">Clear all</button>
             </div>
-          </div>
+            <div id="folder-rail"></div>
+            <div id="history-list"></div>
+          </section>
 
-          <div class="actions">
-            <button class="primary" id="btn-save">Save settings</button>
-            <button class="ghost" id="btn-test" title="Runs the stub pipeline so you can see the pill">
-              Test pill overlay
-            </button>
-            <span id="save-status">Saved ✓</span>
-          </div>
-        </section>
-
-        <!-- ─── History tab ─── -->
-        <section class="page" id="page-history">
-          <div id="history-toolbar">
-            <div class="toolbar-left">
-              <span id="history-count"></span>
-              <select id="tag-filter" title="Filter by tag">
-                <option value="">all tags</option>
-              </select>
-              <span id="active-filter">
-                <span id="active-filter-name"></span>
-                <button id="btn-clear-filter" title="Clear tag filter">✕</button>
-              </span>
+          <!-- ─── About ─── -->
+          <section class="page" id="page-about">
+            <div class="page-title">About</div>
+            <div class="card">
+              <div class="about-hero">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="of-grad-2" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stop-color="#ff2d3a" />
+                      <stop offset="1" stop-color="#ff7a45" />
+                    </linearGradient>
+                  </defs>
+                  <rect width="64" height="64" rx="14" fill="#16100f" />
+                  <path
+                    d="M16.5 25 A17 17 0 0 1 47.5 25 M16.5 39 A17 17 0 0 0 47.5 39"
+                    fill="none"
+                    stroke="url(#of-grad-2)"
+                    stroke-width="7"
+                    stroke-linecap="round"
+                  />
+                  <rect x="22.5" y="27" width="4" height="10" rx="2" fill="url(#of-grad-2)" />
+                  <rect x="30" y="23" width="4" height="18" rx="2" fill="url(#of-grad-2)" />
+                  <rect x="37.5" y="27" width="4" height="10" rx="2" fill="url(#of-grad-2)" />
+                </svg>
+                <div>
+                  <div class="name">Owen<span>Flow</span></div>
+                  <div class="version" id="about-version">v—</div>
+                </div>
+              </div>
+              <p class="about-blurb">
+                Local-first dictation. Hold a key, speak, and your words land anywhere — transcribed
+                on this machine by Whisper, never sent to the cloud. Optional AI polish for prompts
+                and client-ready writing.
+              </p>
             </div>
-            <button class="danger" id="btn-clear">Clear all</button>
-          </div>
-          <div id="history-list"></div>
-        </section>
+            <div class="card">
+              <h2>Data</h2>
+              <div class="row">
+                <label class="title">
+                  Data location
+                  <span class="hint">Settings + dictation history live here</span>
+                </label>
+                <span class="mono-value" id="about-data-path">—</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- save bar (settings sections only; hidden on History/About) -->
+        <div class="actions" id="form-actions">
+          <button class="primary" id="btn-save">Save settings</button>
+          <button class="ghost" id="btn-test" title="Runs the stub pipeline so you can see the pill">
+            Test pill overlay
+          </button>
+          <span id="save-status">Saved ✓</span>
+        </div>
       </main>
     </div>
     <script type="module" src="./src/settings.ts"></script>

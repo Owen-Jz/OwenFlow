@@ -8,6 +8,22 @@
     />
     <title>OwenFlow Pill</title>
     <style>
+      /* ── Brand palette — single source of truth for recoloring ─────────── */
+      :root {
+        --brand-a: #ff3b3b; /* gradient start (red) */
+        --brand-b: #ff8a3b; /* gradient end (amber-red) */
+        --brand-a-rgb: 255, 59, 59;
+        --brand-b-rgb: 255, 138, 59;
+        --ok: #32d74b;
+        --ok-rgb: 50, 215, 75;
+        --err: #ff453a;
+        --err-rgb: 255, 69, 58;
+        --ink: rgba(240, 240, 245, 0.88);
+        --shell-top: rgba(24, 20, 22, 0.95);
+        --shell-bottom: rgba(13, 10, 11, 0.97);
+        /* live amplitude 0..1, written by pill.ts (throttled) */
+        --amp: 0;
+      }
       * {
         margin: 0;
         padding: 0;
@@ -45,21 +61,21 @@
         width: 200px;
         padding: 0 12px;
         border-radius: 12px;
-        background: linear-gradient(180deg, rgba(22, 22, 30, 0.95), rgba(11, 11, 17, 0.97));
-        border: 1px solid rgba(139, 92, 246, 0.32);
+        background: linear-gradient(180deg, var(--shell-top), var(--shell-bottom));
+        border: 1px solid rgba(var(--brand-a-rgb), 0.34);
+        /* amplitude-reactive halo: louder voice → wider, hotter glow */
         box-shadow:
           0 6px 20px rgba(0, 0, 0, 0.55),
-          0 0 14px rgba(139, 92, 246, 0.14),
+          0 0 calc(10px + var(--amp) * 16px) rgba(var(--brand-a-rgb), calc(0.12 + var(--amp) * 0.38)),
           inset 0 1px 0 rgba(255, 255, 255, 0.05),
-          inset 0 0 10px rgba(139, 92, 246, 0.05);
+          inset 0 0 10px rgba(var(--brand-a-rgb), 0.05);
         backdrop-filter: blur(12px);
         opacity: 0;
-        transform: translateY(8px) scale(0.94);
+        transform: translateY(10px) scale(0.88);
         transition:
-          opacity 160ms ease,
-          transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.15),
-          border-color 220ms ease,
-          box-shadow 220ms ease;
+          opacity 150ms ease-in,
+          transform 180ms cubic-bezier(0.4, 0, 0.8, 0.4),
+          border-color 220ms ease;
         pointer-events: none;
         overflow: hidden;
       }
@@ -71,8 +87,8 @@
         border-radius: inherit;
         background: repeating-linear-gradient(
           180deg,
-          rgba(139, 92, 246, 0.05) 0px,
-          rgba(139, 92, 246, 0.05) 1px,
+          rgba(var(--brand-a-rgb), 0.045) 0px,
+          rgba(var(--brand-a-rgb), 0.045) 1px,
           transparent 1px,
           transparent 3px
         );
@@ -89,17 +105,36 @@
         background: linear-gradient(
           90deg,
           transparent,
-          rgba(139, 92, 246, 0.55),
-          rgba(59, 130, 246, 0.45),
+          rgba(var(--brand-a-rgb), 0.6),
+          rgba(var(--brand-b-rgb), 0.45),
           transparent
         );
         pointer-events: none;
       }
+      /* spring-physics entrance: rise + overshoot + settle */
       #pill.visible {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: none;
+        animation: pill-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
       }
-      /* live waveform canvas (recording + transcribing) */
+      @keyframes pill-in {
+        0% {
+          opacity: 0;
+          transform: translateY(14px) scale(0.85);
+        }
+        55% {
+          opacity: 1;
+          transform: translateY(-2.5px) scale(1.035);
+        }
+        78% {
+          transform: translateY(1px) scale(0.992);
+        }
+        100% {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      /* live waveform canvas (recording + transcribing + done-morph) */
       #wave {
         display: none;
         flex: 1 1 auto;
@@ -127,15 +162,15 @@
         width: 5px;
         height: 5px;
         border-radius: 50%;
-        background: #ff453a;
-        box-shadow: 0 0 5px rgba(255, 69, 58, 0.85);
+        background: var(--err);
+        box-shadow: 0 0 5px rgba(var(--err-rgb), 0.85);
         animation: blink 1.3s ease-in-out infinite;
       }
       #rec .glyph {
         font-size: 8px;
         font-weight: 600;
         letter-spacing: 0.14em;
-        color: rgba(255, 99, 88, 0.85);
+        color: rgba(var(--err-rgb), 0.85);
         line-height: 1;
       }
       @keyframes blink {
@@ -147,12 +182,26 @@
           opacity: 0.35;
         }
       }
+      /* recording: mono elapsed counter (0:04) */
+      #time {
+        display: none;
+        flex: 0 0 auto;
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        line-height: 1;
+        color: rgba(var(--brand-b-rgb), 0.75);
+        font-variant-numeric: tabular-nums;
+      }
+      #pill[data-state='recording'] #time {
+        display: block;
+      }
       /* transcribing: tiny morphing mono dots */
       #proc {
         font-size: 9px;
         font-weight: 600;
         letter-spacing: 0.18em;
-        color: rgba(167, 139, 250, 0.9);
+        color: rgba(var(--brand-b-rgb), 0.9);
         line-height: 1;
         width: 14px;
         overflow: hidden;
@@ -172,14 +221,14 @@
       }
       /* done: green check pop */
       #check {
-        color: #32d74b;
+        color: var(--ok);
         margin: 0 auto;
       }
       #check svg {
         width: 14px;
         height: 14px;
         display: block;
-        filter: drop-shadow(0 0 4px rgba(50, 215, 75, 0.6));
+        filter: drop-shadow(0 0 4px rgba(var(--ok-rgb), 0.6));
         animation: pop 240ms cubic-bezier(0.2, 1.4, 0.4, 1);
       }
       @keyframes pop {
@@ -194,7 +243,7 @@
       }
       /* error: red bang */
       #bang {
-        color: #ff453a;
+        color: var(--err);
         font-weight: 700;
         font-size: 11px;
         line-height: 12px;
@@ -203,7 +252,7 @@
       /* micro-typography label: error messages only */
       #label {
         display: none;
-        color: rgba(240, 240, 245, 0.88);
+        color: var(--ink);
         font-size: 10px;
         font-weight: 500;
         letter-spacing: 0.04em;
@@ -219,14 +268,41 @@
         display: block;
       }
       #pill[data-state='done'] {
-        border-color: rgba(50, 215, 75, 0.5);
+        border-color: rgba(var(--ok-rgb), 0.5);
         box-shadow:
           0 6px 20px rgba(0, 0, 0, 0.55),
-          0 0 16px rgba(50, 215, 75, 0.25),
+          0 0 16px rgba(var(--ok-rgb), 0.25),
           inset 0 1px 0 rgba(255, 255, 255, 0.05);
       }
+      /* error: brief hardware-glitch jitter, then settle */
       #pill[data-state='error'] {
-        border-color: rgba(255, 69, 58, 0.45);
+        border-color: rgba(var(--err-rgb), 0.45);
+        animation: glitch 300ms steps(2, end) 1;
+      }
+      @keyframes glitch {
+        0% {
+          transform: translateX(0);
+          filter: none;
+        }
+        20% {
+          transform: translateX(-2px);
+          filter: hue-rotate(-18deg) brightness(1.25);
+        }
+        40% {
+          transform: translateX(2px) translateY(1px);
+          filter: brightness(0.85);
+        }
+        60% {
+          transform: translateX(-1px);
+          filter: hue-rotate(12deg) brightness(1.15);
+        }
+        80% {
+          transform: translateX(1px);
+          filter: none;
+        }
+        100% {
+          transform: translateX(0);
+        }
       }
     </style>
   </head>
@@ -239,6 +315,7 @@
         </div>
         <div class="icon" id="proc">···</div>
         <canvas id="wave"></canvas>
+        <div id="time">0:00</div>
         <div class="icon" id="check">
           <svg viewBox="0 0 16 16" fill="none">
             <path

@@ -17,6 +17,12 @@ export type FlowMode = 'normal' | 'vibe' | 'formal'
 
 export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo'
 
+/**
+ * Settings-window theme. 'system' follows the OS prefers-color-scheme,
+ * including live changes. The pill overlay is always dark glass.
+ */
+export type ThemeMode = 'dark' | 'light' | 'system'
+
 export interface OwenFlowSettings {
   /** uiohook keycode name, e.g. "RightCtrl" */
   hotkey: string
@@ -36,6 +42,21 @@ export interface OwenFlowSettings {
    */
   dictionary: string[]
   launchOnStartup: boolean
+  /** Settings-window theme (dark | light | system). */
+  theme: ThemeMode
+}
+
+/** Static app facts for the About section ("app:info"). */
+export interface AppInfo {
+  version: string
+  /** userData directory where config + history live. */
+  dataDir: string
+}
+
+/** Sidecar status snapshot pushed to the settings window ("sidecar:status"). */
+export interface SidecarStatusInfo {
+  status: 'stopped' | 'starting' | 'ready' | 'error'
+  detail: string
 }
 
 export interface HistoryEntry {
@@ -55,11 +76,22 @@ export interface HistoryEntry {
   tags: string[]
   /** Flow mode the dictation ran in (normal/vibe/formal); absent on old lines. */
   mode?: string
+  /**
+   * Folder the entry lives in (at most one; separate axis from tags).
+   * Absent/undefined = unfiled. Old JSONL lines without it still parse.
+   */
+  folder?: string
 }
 
 /** One distinct tag with how many history entries carry it. */
 export interface TagCount {
   tag: string
+  count: number
+}
+
+/** One distinct folder with how many history entries live in it. */
+export interface FolderCount {
+  folder: string
   count: number
 }
 
@@ -93,6 +125,14 @@ export interface OwenFlowApi {
     updateTags: (ts: number, tags: string[]) => Promise<boolean>
     /** Distinct tags with usage counts ("history:tags"). */
     tags: () => Promise<TagCount[]>
+    /** Move the entry with timestamp ts into a folder; null unfiles it ("history:setFolder"). */
+    setFolder: (ts: number, folder: string | null) => Promise<boolean>
+    /** Distinct folders with entry counts, alphabetical ("history:folders"). */
+    folders: () => Promise<FolderCount[]>
+    /** Rename a folder across all its entries; resolves to entries changed ("history:renameFolder"). */
+    renameFolder: (from: string, to: string) => Promise<number>
+    /** Delete a folder: unfile all its entries; resolves to entries changed ("history:deleteFolder"). */
+    deleteFolder: (name: string) => Promise<number>
   }
   pill: {
     /** Subscribe to pill state pushes ("pill:state"). Returns unsubscribe. */
@@ -127,6 +167,16 @@ export interface OwenFlowApi {
     /** Trigger the stub pipeline so the pill can be visually verified. */
     simulateDictation: () => Promise<void>
   }
+  appinfo: {
+    /** Version + data dir for the About section ("app:info"). */
+    get: () => Promise<AppInfo>
+  }
+  sidecar: {
+    /** Current sidecar status snapshot ("sidecar:status:get"). */
+    get: () => Promise<SidecarStatusInfo>
+    /** Subscribe to sidecar status pushes ("sidecar:status"). Returns unsubscribe. */
+    onStatus: (cb: (info: SidecarStatusInfo) => void) => () => void
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -143,7 +193,14 @@ export const IPC = {
   historyClear: 'history:clear',
   historyUpdateTags: 'history:updateTags',
   historyTags: 'history:tags',
+  historySetFolder: 'history:setFolder',
+  historyFolders: 'history:folders',
+  historyRenameFolder: 'history:renameFolder',
+  historyDeleteFolder: 'history:deleteFolder',
   clipboardWrite: 'clipboard:write',
   uiShowTab: 'ui:show-tab',
-  debugSimulate: 'debug:simulate-dictation'
+  debugSimulate: 'debug:simulate-dictation',
+  appInfo: 'app:info',
+  sidecarStatusGet: 'sidecar:status:get',
+  sidecarStatus: 'sidecar:status'
 } as const

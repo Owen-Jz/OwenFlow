@@ -14,7 +14,8 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   minimaxApiKey: '',
   minimaxGroupId: '',
   dictionary: [],
-  launchOnStartup: false
+  launchOnStartup: false,
+  theme: 'dark'
 }
 
 // Captured BEFORE the store is instantiated (electron-store may write the
@@ -43,7 +44,8 @@ const store = new Store<OwenFlowSettings>({
     minimaxApiKey: { type: 'string', default: '' },
     minimaxGroupId: { type: 'string', default: '' },
     dictionary: { type: 'array', items: { type: 'string' }, default: [] },
-    launchOnStartup: { type: 'boolean', default: false }
+    launchOnStartup: { type: 'boolean', default: false },
+    theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }
 })
 

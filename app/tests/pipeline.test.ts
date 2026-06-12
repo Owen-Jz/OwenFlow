@@ -21,6 +21,7 @@ const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =
   minimaxGroupId: '',
   dictionary: [],
   launchOnStartup: false,
+  theme: 'dark',
   ...patch
 })
 

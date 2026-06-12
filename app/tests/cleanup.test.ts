@@ -13,6 +13,7 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   minimaxGroupId: '',
   dictionary: [],
   launchOnStartup: false,
+  theme: 'dark',
   ...patch
 })
 
@@ -70,7 +71,7 @@ describe('cleanup', () => {
       fetchMock.mockResolvedValue(okResponse('x'))
       await cleanup(RAW, settings({ flowMode: 'vibe' }))
       expect(systemPrompt()).toContain('AI coding assistant')
-      expect(systemPrompt()).toContain('Preserve ALL technical specifics')
+      expect(systemPrompt()).toContain('Preserve EVERY technical specific')
       expect(systemPrompt()).toContain('no markdown code fences')
     })
 

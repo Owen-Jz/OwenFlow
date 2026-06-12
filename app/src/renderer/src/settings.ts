@@ -1,5 +1,6 @@
 /**
- * Settings + History window renderer (two tabs, one window).
+ * Settings window renderer — sidebar app shell with
+ * General / Modes / Dictionary / History / About sections.
  */
 
 // Techy typography: Space Grotesk for headings/UI, JetBrains Mono for
@@ -10,7 +11,14 @@ import '@fontsource/space-grotesk/700.css'
 import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/700.css'
 
-import type { FlowMode, HistoryEntry, OwenFlowSettings } from '../../shared/types'
+import type {
+  FlowMode,
+  FolderCount,
+  HistoryEntry,
+  OwenFlowSettings,
+  SidecarStatusInfo,
+  ThemeMode
+} from '../../shared/types'
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id)
@@ -18,22 +26,57 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T
 }
 
-// ─── Tabs ───────────────────────────────────────────────────────────────────
+// ─── Theme ──────────────────────────────────────────────────────────────────
 
-const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))
+const themeOpts = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('.seg-opt[data-theme-opt]')
+)
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)')
+let selectedTheme: ThemeMode = 'dark'
 
-function showTab(name: 'settings' | 'history'): void {
-  for (const tab of tabs) tab.classList.toggle('active', tab.dataset.tab === name)
-  $('page-settings').classList.toggle('active', name === 'settings')
-  $('page-history').classList.toggle('active', name === 'history')
+/** Resolve + apply the theme to <html data-theme>. */
+function applyTheme(): void {
+  const resolved =
+    selectedTheme === 'system' ? (systemDark.matches ? 'dark' : 'light') : selectedTheme
+  document.documentElement.dataset.theme = resolved
+}
+
+function selectTheme(theme: ThemeMode): void {
+  selectedTheme = theme
+  for (const opt of themeOpts) opt.classList.toggle('active', opt.dataset.themeOpt === theme)
+  applyTheme()
+}
+
+for (const opt of themeOpts) {
+  opt.addEventListener('click', () => selectTheme(opt.dataset.themeOpt as ThemeMode))
+}
+
+// 'system' follows the OS live (e.g. Windows auto dark at night).
+systemDark.addEventListener('change', () => {
+  if (selectedTheme === 'system') applyTheme()
+})
+
+// ─── Sidebar navigation ─────────────────────────────────────────────────────
+
+type SectionName = 'general' | 'modes' | 'dictionary' | 'history' | 'about'
+
+const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item'))
+const pages: SectionName[] = ['general', 'modes', 'dictionary', 'history', 'about']
+
+function showSection(name: SectionName): void {
+  for (const item of navItems) item.classList.toggle('active', item.dataset.section === name)
+  for (const page of pages) $(`page-${page}`).classList.toggle('active', page === name)
+  // Save bar only applies to the settings-form sections.
+  $('form-actions').classList.toggle('hidden', name === 'history' || name === 'about')
   if (name === 'history') void refreshHistory()
 }
 
-for (const tab of tabs) {
-  tab.addEventListener('click', () => showTab(tab.dataset.tab as 'settings' | 'history'))
+for (const item of navItems) {
+  item.addEventListener('click', () => showSection(item.dataset.section as SectionName))
 }
 
-window.owenflow.ui.onShowTab((tab) => showTab(tab))
+// Main process still speaks the old two-tab language (tray menu items).
+window.owenflow.ui.onShowTab((tab) => showSection(tab === 'history' ? 'history' : 'general'))
 
 // ─── Settings form ──────────────────────────────────────────────────────────
 
@@ -77,6 +120,7 @@ function fillForm(s: OwenFlowSettings): void {
   fDictionary.value = s.dictionary.join('\n')
   fStartup.checked = s.launchOnStartup
   selectFlowMode(s.flowMode ?? 'normal')
+  selectTheme(s.theme ?? 'dark')
 }
 
 function readForm(): Partial<OwenFlowSettings> {
@@ -93,7 +137,8 @@ function readForm(): Partial<OwenFlowSettings> {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean),
-    launchOnStartup: fStartup.checked
+    launchOnStartup: fStartup.checked,
+    theme: selectedTheme
   }
 }
 
@@ -157,6 +202,306 @@ async function refreshTagFilter(): Promise<void> {
     activeFilter.classList.remove('show')
   }
   tagFilter.value = filterTag
+}
+
+// ─── Folders ────────────────────────────────────────────────────────────────
+
+const folderRail = $('folder-rail')
+
+/** Currently active folder filter ('' = All, shows everything incl. unfiled). */
+let filterFolder = ''
+
+/** Folders that exist through entries (from main), alphabetical. */
+let knownFolders: FolderCount[] = []
+
+/**
+ * Folders the user created that have no entries yet. Folders are implicit
+ * (no registry file), so an empty one lives only in this transient list until
+ * its first entry is assigned — then it shows up in knownFolders instead.
+ */
+let transientFolders: string[] = []
+
+/** Canonical renderer-side folder form (main normalizes again on write). */
+function normalizeFolderName(raw: string): string {
+  return raw.trim().slice(0, 40).trim()
+}
+
+/** All folder names (real + transient), alphabetical. */
+function allFolderNames(): string[] {
+  const names = knownFolders.map((f) => f.folder)
+  for (const t of transientFolders) {
+    if (!names.some((n) => n.toLowerCase() === t.toLowerCase())) names.push(t)
+  }
+  return names.sort((a, b) => a.localeCompare(b))
+}
+
+/** Existing folder matching `name` case-insensitively (prevents dupes by case). */
+function canonicalFolder(name: string): string | undefined {
+  return allFolderNames().find((n) => n.toLowerCase() === name.toLowerCase())
+}
+
+function setFolderFilter(name: string): void {
+  filterFolder = name
+  void refreshHistory()
+}
+
+/** Re-pull folder counts from main and re-render the rail (list untouched). */
+async function refreshFolderRail(): Promise<void> {
+  knownFolders = await window.owenflow.history.folders()
+  // A transient folder becomes real once its first entry lands.
+  transientFolders = transientFolders.filter(
+    (t) => !knownFolders.some((f) => f.folder.toLowerCase() === t.toLowerCase())
+  )
+  // Active filter's folder vanished (last entry left, or deleted) → back to All.
+  if (filterFolder && !canonicalFolder(filterFolder)) filterFolder = ''
+  renderFolderRail()
+}
+
+function closeFolderMenus(): void {
+  for (const menu of Array.from(document.querySelectorAll('.folder-menu'))) menu.remove()
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (!(e.target instanceof Element) || !e.target.closest('.folder-menu')) closeFolderMenus()
+})
+
+function openFolderMenu(chip: HTMLElement, name: string): void {
+  closeFolderMenus()
+  const menu = document.createElement('div')
+  menu.className = 'folder-menu'
+
+  const rename = document.createElement('div')
+  rename.className = 'item'
+  rename.textContent = 'Rename'
+  rename.addEventListener('click', (e) => {
+    e.stopPropagation() // keep the chip's own click (filter) from firing
+    closeFolderMenus()
+    startFolderRename(chip, name)
+  })
+
+  const del = document.createElement('div')
+  del.className = 'item danger'
+  del.textContent = 'Delete'
+  del.addEventListener('click', async (e) => {
+    e.stopPropagation() // keep the chip's own click (filter) from firing
+    closeFolderMenus()
+    if (!confirm(`Delete folder "${name}"? Its dictations become unfiled.`)) return
+    transientFolders = transientFolders.filter((t) => t !== name)
+    await window.owenflow.history.deleteFolder(name)
+    if (filterFolder === name) filterFolder = ''
+    await refreshHistory()
+  })
+
+  menu.append(rename, del)
+  chip.append(menu)
+}
+
+/** Swap a folder chip for an inline rename input. */
+function startFolderRename(chip: HTMLElement, name: string): void {
+  const input = document.createElement('input')
+  input.className = 'folder-input'
+  input.value = name
+  input.spellcheck = false
+  chip.replaceWith(input)
+  input.focus()
+  input.select()
+
+  let done = false
+  const cancel = (): void => {
+    if (done) return
+    done = true
+    renderFolderRail()
+  }
+  const commit = async (): Promise<void> => {
+    if (done) return
+    const to = normalizeFolderName(input.value)
+    const existing = to ? canonicalFolder(to) : undefined
+    // Block empty names and dupes (incl. case-only collisions with OTHER
+    // folders); allow re-casing the folder itself.
+    if (!to || to === name || (existing && existing.toLowerCase() !== name.toLowerCase())) {
+      cancel()
+      return
+    }
+    done = true
+    if (transientFolders.includes(name)) {
+      transientFolders = transientFolders.map((t) => (t === name ? to : t))
+    } else {
+      await window.owenflow.history.renameFolder(name, to)
+    }
+    if (filterFolder === name) filterFolder = to
+    await refreshHistory()
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') void commit()
+    else if (e.key === 'Escape') cancel()
+  })
+  input.addEventListener('blur', () => void commit())
+}
+
+function renderFolderChip(name: string, count: number): HTMLElement {
+  const chip = document.createElement('span')
+  chip.className = 'folder-chip' + (filterFolder === name ? ' active' : '')
+  chip.title = `Show only 📁 ${name}`
+
+  const label = document.createElement('span')
+  label.textContent = `📁 ${name}`
+
+  const cnt = document.createElement('span')
+  cnt.className = 'count'
+  cnt.textContent = String(count)
+
+  const menuBtn = document.createElement('span')
+  menuBtn.className = 'menu-btn'
+  menuBtn.textContent = '⋯'
+  menuBtn.title = 'Rename / delete folder'
+  menuBtn.addEventListener('mousedown', (e) => e.stopPropagation())
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    openFolderMenu(chip, name)
+  })
+
+  chip.addEventListener('click', () => setFolderFilter(name))
+  chip.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    openFolderMenu(chip, name)
+  })
+
+  chip.append(label, cnt, menuBtn)
+  return chip
+}
+
+function renderFolderRail(): void {
+  folderRail.replaceChildren()
+
+  const all = document.createElement('span')
+  all.className = 'folder-chip' + (filterFolder ? '' : ' active')
+  all.textContent = 'All'
+  all.title = 'Show everything, including unfiled'
+  all.addEventListener('click', () => setFolderFilter(''))
+  folderRail.append(all)
+
+  const counts = new Map(knownFolders.map((f) => [f.folder, f.count]))
+  for (const name of allFolderNames()) {
+    folderRail.append(renderFolderChip(name, counts.get(name) ?? 0))
+  }
+
+  const add = document.createElement('button')
+  add.className = 'folder-new'
+  add.textContent = '+ new folder'
+  add.addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.className = 'folder-input'
+    input.placeholder = 'folder name'
+    input.spellcheck = false
+    add.replaceWith(input)
+    input.focus()
+
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      const name = normalizeFolderName(input.value)
+      if (name) {
+        const existing = canonicalFolder(name)
+        if (!existing) transientFolders.push(name)
+        // Jump straight into the (possibly pre-existing) folder so the user
+        // can immediately assign entries to it.
+        filterFolder = existing ?? name
+      }
+      void refreshHistory()
+    }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish()
+      else if (e.key === 'Escape') {
+        done = true
+        renderFolderRail()
+      }
+    })
+    input.addEventListener('blur', finish)
+  })
+  folderRail.append(add)
+}
+
+/** Sentinel select value for the per-entry "New folder…" option. */
+const NEW_FOLDER = ' new-folder'
+
+/** Per-entry 📁 dropdown: move to a folder / new folder / remove from folder. */
+function renderFolderControl(entry: HistoryEntry): HTMLElement {
+  const holder = document.createElement('span')
+
+  // Persist + re-render only this control — no full-list reload (same
+  // in-place pattern as the tag strip). Full refresh only when the active
+  // folder filter no longer matches (entry must drop out of the list).
+  const save = async (folder: string | null): Promise<void> => {
+    await window.owenflow.history.setFolder(entry.ts, folder)
+    entry.folder = folder ?? undefined
+    if (filterFolder && entry.folder !== filterFolder) {
+      await refreshHistory()
+      return
+    }
+    await refreshFolderRail() // keep chip counts current
+    holder.replaceWith(renderFolderControl(entry))
+  }
+
+  const select = document.createElement('select')
+  select.className = 'folder-select'
+  select.title = 'Move to folder'
+
+  const none = document.createElement('option')
+  none.value = ''
+  none.textContent = entry.folder ? '✕ remove from folder' : '📁 no folder'
+  select.append(none)
+  for (const name of allFolderNames()) {
+    const opt = document.createElement('option')
+    opt.value = name
+    opt.textContent = `📁 ${name}`
+    select.append(opt)
+  }
+  const create = document.createElement('option')
+  create.value = NEW_FOLDER
+  create.textContent = '+ new folder…'
+  select.append(create)
+  select.value = entry.folder ?? ''
+
+  select.addEventListener('change', () => {
+    if (select.value !== NEW_FOLDER) {
+      void save(select.value || null)
+      return
+    }
+    // Inline "New folder…": swap the select for a text input.
+    const input = document.createElement('input')
+    input.className = 'folder-input'
+    input.placeholder = 'folder name'
+    input.spellcheck = false
+    select.replaceWith(input)
+    input.focus()
+
+    let done = false
+    const cancel = (): void => {
+      if (done) return
+      done = true
+      holder.replaceWith(renderFolderControl(entry))
+    }
+    const commit = (): void => {
+      if (done) return
+      const name = normalizeFolderName(input.value)
+      if (!name) {
+        cancel()
+        return
+      }
+      done = true
+      // Reuse an existing folder when the name differs only by case.
+      void save(canonicalFolder(name) ?? name)
+    }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') commit()
+      else if (e.key === 'Escape') cancel()
+    })
+    input.addEventListener('blur', commit)
+  })
+
+  holder.append(select)
+  return holder
 }
 
 /** Canonical renderer-side tag form (main normalizes again on write). */
@@ -245,9 +590,7 @@ function renderTags(entry: HistoryEntry): HTMLElement {
 
     const suggestions = (): string[] => {
       const q = normalizeTag(input.value)
-      return knownTags
-        .filter((t) => !entry.tags.includes(t) && (!q || t.includes(q)))
-        .slice(0, 6)
+      return knownTags.filter((t) => !entry.tags.includes(t) && (!q || t.includes(q))).slice(0, 6)
     }
 
     const renderSuggest = (): void => {
@@ -316,9 +659,11 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
 
   const ts = document.createElement('div')
   ts.className = 'ts'
-  ts.textContent =
+  const tsText = document.createElement('span')
+  tsText.textContent =
     `${formatTs(entry.ts)} · ${(entry.durationMs / 1000).toFixed(1)}s` +
     (entry.mode ? ` · ${entry.mode}` : '')
+  ts.append(tsText, renderFolderControl(entry))
 
   const text = document.createElement('div')
   text.className = 'text'
@@ -351,18 +696,27 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
 }
 
 async function refreshHistory(): Promise<void> {
-  const [all] = await Promise.all([window.owenflow.history.list(200), refreshTagFilter()])
-  const entries = filterTag ? all.filter((e) => e.tags.includes(filterTag)) : all
+  const [all] = await Promise.all([
+    window.owenflow.history.list(200),
+    refreshTagFilter(),
+    refreshFolderRail()
+  ])
+  // Tag filter + folder filter combine as AND.
+  let entries = filterTag ? all.filter((e) => e.tags.includes(filterTag)) : all
+  if (filterFolder) entries = entries.filter((e) => e.folder === filterFolder)
   historyList.replaceChildren()
+  const filterSuffix =
+    (filterTag ? ` · #${filterTag}` : '') + (filterFolder ? ` · 📁 ${filterFolder}` : '')
   historyCount.textContent = entries.length
-    ? `${entries.length} dictation${entries.length === 1 ? '' : 's'}${filterTag ? ` · #${filterTag}` : ''}`
+    ? `${entries.length} dictation${entries.length === 1 ? '' : 's'}${filterSuffix}`
     : ''
   if (entries.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'empty'
-    empty.textContent = filterTag
-      ? `No dictations tagged #${filterTag}.`
-      : 'No dictations yet. Hold the hotkey and speak.'
+    empty.textContent =
+      filterTag || filterFolder
+        ? `No dictations${filterTag ? ` tagged #${filterTag}` : ''}${filterFolder ? ` in 📁 ${filterFolder}` : ''}.`
+        : 'No dictations yet. Hold the hotkey and speak.'
     historyList.append(empty)
     return
   }
@@ -373,6 +727,27 @@ $('btn-clear').addEventListener('click', async () => {
   await window.owenflow.history.clear()
   await refreshHistory()
 })
+
+// ─── About ──────────────────────────────────────────────────────────────────
+
+void window.owenflow.appinfo.get().then((info) => {
+  $('about-version').textContent = `v${info.version}`
+  $('about-data-path').textContent = info.dataDir
+})
+
+// ─── Sidecar status pill (sidebar bottom) ──────────────────────────────────
+
+const sidecarPill = $('sidecar-pill')
+const sidecarText = $('sidecar-status-text')
+
+function renderSidecarStatus({ status, detail }: SidecarStatusInfo): void {
+  sidecarPill.dataset.status = status
+  sidecarText.textContent = `sidecar ${status}${detail ? ` · ${detail}` : ''}`
+  sidecarPill.title = `Local Whisper sidecar — ${status}${detail ? ` (${detail})` : ''}`
+}
+
+void window.owenflow.sidecar.get().then(renderSidecarStatus)
+window.owenflow.sidecar.onStatus(renderSidecarStatus)
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 

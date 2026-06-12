@@ -1,6 +1,8 @@
 # OwenFlow app icon generator.
-# Rounded-square near-black (#0d0d14) tile with a microphone mark in a
-# violet -> blue gradient (#8b5cf6 -> #3b82f6). Run: py -3.13 scripts/make-icon.py
+# Mark: a bold geometric "O" (for Owen) whose ring is broken by a horizontal
+# waveform band — three rounded bars in the gap. Red -> warm-orange gradient
+# (#ff2d3a -> #ff7a45) on a near-black warm rounded-square tile (#16100f).
+# Run: py -3.13 scripts/make-icon.py
 import os
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -9,9 +11,19 @@ MASTER = 1024
 SS = 4  # supersample factor for crisp antialiased masks
 BIG = MASTER * SS
 
-VIOLET = (0x8B, 0x5C, 0xF6)
-BLUE = (0x3B, 0x82, 0xF6)
-BG = (0x0D, 0x0D, 0x14)
+RED = (0xFF, 0x2D, 0x3A)
+ORANGE = (0xFF, 0x7A, 0x45)
+BG = (0x16, 0x10, 0x0F)
+
+# Geometry (1024 design grid). Ring weights tuned to stay readable at 16px.
+CX = CY = 512
+R_OUT = 350          # O ring outer radius
+STROKE = 118         # O ring stroke weight
+R_IN = R_OUT - STROKE
+GAP_HALF = 118       # half-height of the horizontal waveform band that breaks the O
+BAR_W = 92           # waveform bar width
+BAR_STEP = 156       # distance between bar centers
+BAR_H = (200, 330, 200)  # side, center, side bar heights
 
 
 def rounded_square_mask() -> Image.Image:
@@ -23,38 +35,43 @@ def rounded_square_mask() -> Image.Image:
     return m.resize((MASTER, MASTER), Image.LANCZOS)
 
 
-def mic_mask() -> Image.Image:
-    """Bold microphone glyph, weights tuned to stay readable at 16px."""
+def mark_mask() -> Image.Image:
+    """The O-with-waveform mark as an antialiased alpha mask."""
     m = Image.new('L', (BIG, BIG), 0)
     d = ImageDraw.Draw(m)
-    s = BIG / 1024  # design on a 1024 grid
+    s = BIG / 1024
 
-    cx = 512 * s
-    # capsule body: x 512+/-130, y 240..540 (rounded ends)
-    d.rounded_rectangle([cx - 130 * s, 240 * s, cx + 130 * s, 540 * s], radius=130 * s, fill=255)
-    # cradle: lower half-annulus centered (512, 470), outer r 224, stroke 78
-    cy = 470 * s
-    outer = 224 * s
-    stroke = 78 * s
-    d.pieslice([cx - outer, cy - outer, cx + outer, cy + outer], 0, 180, fill=255)
-    inner = outer - stroke
-    d.pieslice([cx - inner, cy - inner, cx + inner, cy + inner], 0, 180, fill=0)
-    # punch out everything above the arc centerline except the capsule
-    d.rectangle([0, 0, BIG, cy], fill=0)
-    d.rounded_rectangle([cx - 130 * s, 240 * s, cx + 130 * s, 540 * s], radius=130 * s, fill=255)
-    # round caps on the arc tips
-    capr = stroke / 2
-    for tx in (cx - outer + capr, cx + outer - capr):
-        d.ellipse([tx - capr, cy - capr, tx + capr, cy + capr], fill=255)
-    # stem: 694..790, width 78
-    d.rectangle([cx - 39 * s, 690 * s, cx + 39 * s, 790 * s], fill=255)
-    # base bar: width 300, y 790..858, rounded
-    d.rounded_rectangle([cx - 150 * s, 790 * s, cx + 150 * s, 858 * s], radius=34 * s, fill=255)
+    cx, cy = CX * s, CY * s
+
+    # 1) the O: filled annulus
+    d.ellipse([cx - R_OUT * s, cy - R_OUT * s, cx + R_OUT * s, cy + R_OUT * s], fill=255)
+    d.ellipse([cx - R_IN * s, cy - R_IN * s, cx + R_IN * s, cy + R_IN * s], fill=0)
+
+    # 2) break it: punch the horizontal waveform band out of the ring
+    d.rectangle([0, cy - GAP_HALF * s, BIG, cy + GAP_HALF * s], fill=0)
+
+    # 3) round caps on the four arc ends (centerline radius x band edge)
+    r_mid = (R_OUT + R_IN) / 2
+    dx = (r_mid**2 - GAP_HALF**2) ** 0.5
+    capr = STROKE / 2 * s
+    for ex in (cx - dx * s, cx + dx * s):
+        for ey in (cy - GAP_HALF * s, cy + GAP_HALF * s):
+            d.ellipse([ex - capr, ey - capr, ex + capr, ey + capr], fill=255)
+
+    # 4) waveform bars in the gap (center bar taller, pokes past the band)
+    for i, h in enumerate(BAR_H):
+        bx = cx + (i - 1) * BAR_STEP * s
+        half_w = BAR_W / 2 * s
+        half_h = h / 2 * s
+        d.rounded_rectangle(
+            [bx - half_w, cy - half_h, bx + half_w, cy + half_h], radius=half_w, fill=255
+        )
+
     return m.resize((MASTER, MASTER), Image.LANCZOS)
 
 
 def diagonal_gradient(bbox: tuple[int, int, int, int]) -> Image.Image:
-    """Violet (top-left) -> blue (bottom-right), normalized across bbox."""
+    """Red (top-left) -> warm orange (bottom-right), normalized across bbox."""
     n = 256
     x0, y0, x1, y1 = (v * n / MASTER for v in bbox)
     lo, hi = x0 + y0, x1 + y1
@@ -63,13 +80,13 @@ def diagonal_gradient(bbox: tuple[int, int, int, int]) -> Image.Image:
     for y in range(n):
         for x in range(n):
             t = min(1.0, max(0.0, (x + y - lo) / (hi - lo)))
-            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(VIOLET, BLUE))
+            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(RED, ORANGE))
     return g.resize((MASTER, MASTER), Image.BICUBIC)
 
 
 def build() -> Image.Image:
     bg_mask = rounded_square_mask()
-    glyph = mic_mask()
+    glyph = mark_mask()
     grad = diagonal_gradient(glyph.getbbox() or (0, 0, MASTER, MASTER))
 
     icon = Image.new('RGBA', (MASTER, MASTER), (0, 0, 0, 0))
@@ -77,17 +94,19 @@ def build() -> Image.Image:
     tile = Image.new('RGBA', (MASTER, MASTER), BG + (255,))
     icon.paste(tile, (0, 0), bg_mask)
 
-    # soft violet glow behind the glyph (premium feel; invisible at tiny sizes)
+    # soft red glow behind the mark (premium feel; invisible at tiny sizes)
     glow = Image.new('RGBA', (MASTER, MASTER), (0, 0, 0, 0))
-    glow_layer = Image.new('RGBA', (MASTER, MASTER), VIOLET + (0,))
-    glow_alpha = glyph.filter(ImageFilter.GaussianBlur(70)).point(lambda a: int(a * 0.38))
+    glow_layer = Image.new('RGBA', (MASTER, MASTER), RED + (0,))
+    glow_alpha = glyph.filter(ImageFilter.GaussianBlur(70)).point(lambda a: int(a * 0.36))
     glow_layer.putalpha(glow_alpha)
     glow.alpha_composite(glow_layer)
     # keep glow inside the tile
-    glow.putalpha(Image.composite(glow.getchannel('A'), Image.new('L', (MASTER, MASTER), 0), bg_mask))
+    glow.putalpha(
+        Image.composite(glow.getchannel('A'), Image.new('L', (MASTER, MASTER), 0), bg_mask)
+    )
     icon.alpha_composite(glow)
 
-    # gradient glyph
+    # gradient mark
     mark = grad.convert('RGBA')
     mark.putalpha(glyph)
     icon.alpha_composite(mark)

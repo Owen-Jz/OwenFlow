@@ -51,12 +51,16 @@ const SYSTEM_PROMPTS: Record<FlowMode, string> = {
     'Output ONLY the rewritten text — no quotes, labels or commentary.'
   ].join(' '),
   vibe: [
-    'Rewrite this raw spoken developer dictation into a clear, well-structured prompt for an AI coding assistant.',
-    'Preserve ALL technical specifics exactly: names, file paths, identifiers, versions, numbers, constraints.',
-    'Organize as goal, then context, then requirements when natural. Remove filler;',
-    'do NOT invent requirements or details that were not said.',
-    'Output ONLY the refined prompt — no preamble, no commentary, no markdown code fences.'
-  ].join(' '),
+    'You are a prompt engineer. Transform this raw spoken developer dictation into the best possible prompt for an AI coding assistant.',
+    'Rules:',
+    '1. Write as direct instructions to the AI (imperative: "Add...", "Refactor...", "Fix...").',
+    '2. Lead with a one-sentence objective. If the dictation has multiple requirements or details, list them as "- " bullets under the objective; if it is a single simple ask, one tight paragraph.',
+    '3. Preserve EVERY technical specific exactly as spoken: names, file paths, identifiers, versions, numbers, constraints.',
+    '4. Resolve self-corrections — when the speaker changes their mind ("actually, make it X instead"), keep only the final intent.',
+    '5. Make vague references concrete only when the dictation itself makes them clear; NEVER invent requirements, technologies, or details that were not said.',
+    '6. End with expected behavior or acceptance criteria when the speaker described an outcome.',
+    'Output ONLY the finished prompt text — no preamble, no commentary, no markdown code fences.'
+  ].join('\n'),
   formal: [
     'Rewrite this raw spoken dictation into polished professional prose suitable for a message to a client.',
     'Courteous, clear, well structured; remove slang, filler words and false starts.',

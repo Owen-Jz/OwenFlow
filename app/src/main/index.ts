@@ -1,4 +1,4 @@
-import { app, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
 import * as history from './history'
@@ -114,6 +114,18 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.historyTags, () => history.listTags())
 
+  ipcMain.handle(IPC.historySetFolder, (_event, ts: number, folder: string | null) =>
+    history.setFolder(ts, folder)
+  )
+
+  ipcMain.handle(IPC.historyFolders, () => history.listFolders())
+
+  ipcMain.handle(IPC.historyRenameFolder, (_event, from: string, to: string) =>
+    history.renameFolder(from, to)
+  )
+
+  ipcMain.handle(IPC.historyDeleteFolder, (_event, name: string) => history.deleteFolder(name))
+
   // History "Copy" button: navigator.clipboard is unavailable in the packaged
   // file:// renderer (not a secure context), so copy goes through main.
   ipcMain.handle(IPC.clipboardWrite, (_event, text: unknown) => clipboardWrite(text))
@@ -121,6 +133,15 @@ function registerIpc(): void {
   ipcMain.handle(IPC.debugSimulate, async () => {
     await simulateDictation()
   })
+
+  // About section: version + data location.
+  ipcMain.handle(IPC.appInfo, () => ({
+    version: app.getVersion(),
+    dataDir: app.getPath('userData')
+  }))
+
+  // Sidecar status pill in the settings sidebar (current snapshot on demand).
+  ipcMain.handle(IPC.sidecarStatusGet, () => getSidecarStatus())
 
   // Live waveform: forward recorder level frames straight to the pill overlay.
   // Hot path (~20 frames/s while recording) — keep it allocation-free, no logging.
@@ -199,6 +220,13 @@ app.whenReady().then(async () => {
   }
   onSidecarStatus(updateTooltip)
   updateTooltip()
+
+  // Sidecar status → settings-window sidebar pill (push on every change).
+  onSidecarStatus((status, detail) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.sidecarStatus, { status, detail })
+    }
+  })
 
   // Spawn the Python STT sidecar (model load can take a while — don't block boot).
   void startSidecar(getSettings().model).catch((err) => {
