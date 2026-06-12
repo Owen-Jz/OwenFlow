@@ -1,4 +1,5 @@
 import { Menu, Tray, app, nativeImage } from 'electron'
+import trayIconPath from '../../resources/icon.png?asset'
 
 export interface TrayCallbacks {
   isEnabled: () => boolean
@@ -72,8 +73,27 @@ function createMicImage(size = 32): Electron.NativeImage {
   return nativeImage.createFromBitmap(buf, { width: size, height: size })
 }
 
+/**
+ * Branded tray icon from resources/icon.png with 1x/2x representations for
+ * crisp rendering on any DPI; falls back to the drawn glyph if missing.
+ */
+function createTrayIcon(): Electron.NativeImage {
+  const source = nativeImage.createFromPath(trayIconPath)
+  if (source.isEmpty()) return createMicImage()
+  const icon = nativeImage.createEmpty()
+  icon.addRepresentation({
+    scaleFactor: 1,
+    buffer: source.resize({ width: 16, height: 16, quality: 'best' }).toPNG()
+  })
+  icon.addRepresentation({
+    scaleFactor: 2,
+    buffer: source.resize({ width: 32, height: 32, quality: 'best' }).toPNG()
+  })
+  return icon
+}
+
 export function createTray(callbacks: TrayCallbacks): Tray {
-  tray = new Tray(createMicImage())
+  tray = new Tray(createTrayIcon())
   tray.setToolTip('OwenFlow — push-to-talk dictation')
 
   const rebuildMenu = (): void => {

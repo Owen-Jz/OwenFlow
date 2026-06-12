@@ -1,4 +1,7 @@
 import Store from 'electron-store'
+import { app } from 'electron'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import type { OwenFlowSettings } from '../shared/types'
 
 export const DEFAULT_SETTINGS: OwenFlowSettings = {
@@ -11,6 +14,15 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   minimaxGroupId: '',
   dictionary: [],
   launchOnStartup: false
+}
+
+// Captured BEFORE the store is instantiated (electron-store may write the
+// file with defaults on first construction).
+const settingsFileExisted = existsSync(join(app.getPath('userData'), 'config.json'))
+
+/** True when no settings file existed at boot (very first launch). */
+export function isFirstRun(): boolean {
+  return !settingsFileExisted
 }
 
 const store = new Store<OwenFlowSettings>({

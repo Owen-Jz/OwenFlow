@@ -1,6 +1,6 @@
 import { app, ipcMain, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { getSettings, onSettingsChange, parseDictionary, setSettings } from './config'
+import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
 import * as history from './history'
 import { createTray } from './tray'
 import {
@@ -126,7 +126,7 @@ function applyLaunchOnStartup(enabled: boolean): void {
 // ─── Boot ───────────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('dev.owen.owenflow')
+  electronApp.setAppUserModelId('com.owen.owenflow')
 
   // Allow mic capture in the hidden recorder window.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -198,6 +198,12 @@ app.whenReady().then(async () => {
   })
 
   applyLaunchOnStartup(initial.launchOnStartup)
+
+  // First launch (no settings file yet): show Settings so the config is visible.
+  if (isFirstRun()) {
+    void openSettingsWindow('settings')
+  }
+
   onSettingsChange((next, prev) => {
     if (next.launchOnStartup !== prev.launchOnStartup) {
       applyLaunchOnStartup(next.launchOnStartup)

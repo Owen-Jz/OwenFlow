@@ -1,6 +1,7 @@
 import { BrowserWindow, screen, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
+import appIcon from '../../resources/icon.png?asset'
 import type { PillState } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -130,8 +131,9 @@ export async function openSettingsWindow(tab: 'settings' | 'history' = 'settings
     height: 640,
     minWidth: 560,
     minHeight: 480,
-    title: 'OwenFlow',
-    backgroundColor: '#101014',
+    title: 'OwenFlow Settings',
+    icon: appIcon,
+    backgroundColor: '#0d0d14',
     autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,

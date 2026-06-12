@@ -6,19 +6,21 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     />
-    <title>OwenFlow</title>
+    <title>OwenFlow Settings</title>
     <style>
       :root {
-        --bg: #101014;
-        --panel: #17171d;
-        --panel-2: #1d1d25;
+        --bg: #0d0d14;
+        --panel: #17171f;
+        --panel-2: #1e1e2a;
         --border: rgba(255, 255, 255, 0.08);
         --text: #ececf1;
         --text-dim: #9a9aa6;
-        --accent: #6ea8ff;
+        --accent: #8b5cf6;
+        --accent-2: #3b82f6;
+        --accent-grad: linear-gradient(135deg, #8b5cf6, #3b82f6);
         --green: #32d74b;
         --red: #ff453a;
-        --radius: 10px;
+        --radius: 12px;
       }
       * {
         margin: 0;
@@ -38,6 +40,11 @@
         height: 100%;
         -webkit-font-smoothing: antialiased;
       }
+      body {
+        background:
+          radial-gradient(520px 220px at 50% -80px, rgba(139, 92, 246, 0.14), transparent 70%),
+          var(--bg);
+      }
       #app {
         display: flex;
         flex-direction: column;
@@ -48,24 +55,40 @@
         display: flex;
         align-items: center;
         gap: 16px;
-        padding: 16px 24px 0;
+        padding: 18px 24px 0;
       }
-      header h1 {
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-right: 8px;
+      }
+      .brand svg {
+        width: 26px;
+        height: 26px;
+        display: block;
+        border-radius: 7px;
+        box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35);
+      }
+      .brand h1 {
         font-size: 16px;
         font-weight: 700;
         letter-spacing: 0.01em;
-        margin-right: 8px;
       }
-      header h1 span {
-        color: var(--accent);
+      .brand h1 span {
+        background: var(--accent-grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
       }
       .tabs {
         display: flex;
         gap: 4px;
-        background: var(--panel);
+        background: rgba(23, 23, 31, 0.8);
         border: 1px solid var(--border);
         border-radius: 999px;
         padding: 3px;
+        backdrop-filter: blur(8px);
       }
       .tab {
         border: none;
@@ -78,10 +101,13 @@
         cursor: pointer;
         transition: all 120ms ease;
       }
-      .tab.active {
-        background: var(--panel-2);
+      .tab:hover {
         color: var(--text);
-        box-shadow: inset 0 0 0 1px var(--border);
+      }
+      .tab.active {
+        background: var(--accent-grad);
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(139, 92, 246, 0.35);
       }
 
       main {
@@ -99,18 +125,23 @@
       }
 
       .card {
-        background: var(--panel);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 40%),
+          var(--panel);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         padding: 18px 20px;
         margin-bottom: 16px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       }
       .card h2 {
         font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--text-dim);
+        background: var(--accent-grad);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
         margin-bottom: 14px;
       }
       .row {
@@ -146,12 +177,15 @@
         font-size: 13px;
         min-width: 200px;
         outline: none;
-        transition: border-color 120ms ease;
+        transition:
+          border-color 120ms ease,
+          box-shadow 120ms ease;
       }
       input:focus,
       select:focus,
       textarea:focus {
         border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
       }
       textarea {
         width: 100%;
@@ -185,12 +219,14 @@
         transition: all 120ms ease;
       }
       button.primary {
-        background: var(--accent);
+        background: var(--accent-grad);
         border-color: transparent;
-        color: #0b1220;
+        color: #fff;
+        box-shadow: 0 2px 12px rgba(139, 92, 246, 0.3);
       }
       button.primary:hover {
-        filter: brightness(1.1);
+        filter: brightness(1.12);
+        box-shadow: 0 3px 16px rgba(139, 92, 246, 0.45);
       }
       button.ghost {
         background: var(--panel-2);
@@ -237,6 +273,7 @@
         display: flex;
         gap: 14px;
         align-items: flex-start;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       }
       .entry .body {
         flex: 1;
@@ -262,6 +299,7 @@
         font: inherit;
         font-size: 12px;
         cursor: pointer;
+        transition: all 120ms ease;
       }
       .entry button.copy:hover {
         color: var(--text);
@@ -283,7 +321,33 @@
   <body>
     <div id="app">
       <header>
-        <h1>Owen<span>Flow</span></h1>
+        <div class="brand">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="mic-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#8b5cf6" />
+                <stop offset="1" stop-color="#3b82f6" />
+              </linearGradient>
+            </defs>
+            <rect width="64" height="64" rx="14" fill="#0d0d14" />
+            <rect x="24" y="12" width="16" height="22" rx="8" fill="url(#mic-grad)" />
+            <path
+              d="M17 28a15 15 0 0 0 30 0"
+              fill="none"
+              stroke="url(#mic-grad)"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+            <path
+              d="M32 43v6M23 52h18"
+              fill="none"
+              stroke="url(#mic-grad)"
+              stroke-width="5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <h1>Owen<span>Flow</span></h1>
+        </div>
         <div class="tabs">
           <button class="tab active" data-tab="settings">Settings</button>
           <button class="tab" data-tab="history">History</button>
@@ -375,7 +439,7 @@
           <div class="actions">
             <button class="primary" id="btn-save">Save settings</button>
             <button class="ghost" id="btn-test" title="Runs the stub pipeline so you can see the pill">
-              Test dictation (stub)
+              Test pill overlay
             </button>
             <span id="save-status">Saved ✓</span>
           </div>

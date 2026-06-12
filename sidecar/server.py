@@ -18,6 +18,32 @@ log = logging.getLogger("owenflow.sidecar")
 
 MODEL_SIZE = os.environ.get("OWENFLOW_MODEL", "small")
 
+
+def _register_cuda_dlls() -> None:
+    """pip-installed nvidia-cublas-cu12 / nvidia-cudnn-cu12 land inside
+    site-packages and are not on the Windows DLL search path; ctranslate2
+    only finds them if their bin dirs are registered explicitly."""
+    if os.name != "nt":
+        return
+    import site
+    import sysconfig
+
+    roots = {sysconfig.get_paths()["purelib"], *site.getsitepackages()}
+    for root in roots:
+        nvidia = os.path.join(root, "nvidia")
+        if not os.path.isdir(nvidia):
+            continue
+        for pkg in os.listdir(nvidia):
+            bin_dir = os.path.join(nvidia, pkg, "bin")
+            if os.path.isdir(bin_dir):
+                os.add_dll_directory(bin_dir)
+                # some loaders resolve via PATH rather than the DLL dir list
+                os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+                log.info("Registered CUDA DLL dir: %s", bin_dir)
+
+
+_register_cuda_dlls()
+
 app = FastAPI(title="OwenFlow STT Sidecar")
 
 _model = None
