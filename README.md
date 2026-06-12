@@ -12,7 +12,16 @@ Hold Right Ctrl ──► mic records ──► release ──► faster-whisper
 - **Electron app** (`app/`) — tray icon, floating recording pill, settings + history UI, global push-to-talk hook, clipboard-paste injection.
 - **Python sidecar** (`sidecar/`) — FastAPI + faster-whisper on `127.0.0.1:8484`, model stays warm between dictations.
 
-## Setup
+## Install (packaged app)
+
+```powershell
+cd app
+npm run build:win        # produces dist\owenflow-<version>-setup.exe
+```
+
+Run the setup exe — it installs OwenFlow with a desktop + Start-menu shortcut and bundles the sidecar. **Python 3.13 with the sidecar deps must still be installed** (`pip install -r sidecar\requirements.txt` once via `py -3.13 -m pip`); the app launches the sidecar with `py -3.13`.
+
+## Setup (dev mode)
 
 ```powershell
 # 1. Sidecar (one-time; first run downloads the Whisper model ~460MB)
