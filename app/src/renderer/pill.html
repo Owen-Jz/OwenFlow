@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>OwenFlow Pill</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: transparent;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        font-family:
+          'Segoe UI Variable Text',
+          'Segoe UI',
+          system-ui,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+      }
+      #stage {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #pill {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 48px;
+        min-width: 220px;
+        max-width: 248px;
+        padding: 0 20px;
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(38, 38, 46, 0.92), rgba(22, 22, 28, 0.94));
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow:
+          0 8px 28px rgba(0, 0, 0, 0.45),
+          inset 0 1px 0 rgba(255, 255, 255, 0.07);
+        backdrop-filter: blur(14px);
+        opacity: 0;
+        transform: translateY(10px) scale(0.92);
+        transition:
+          opacity 180ms ease,
+          transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+        pointer-events: none;
+      }
+      #pill.visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      #label {
+        color: rgba(240, 240, 245, 0.92);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .icon {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        display: none;
+        position: relative;
+      }
+      /* recording: red pulsing dot */
+      #dot {
+        border-radius: 50%;
+        background: #ff453a;
+        box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.55);
+        animation: pulse 1.3s ease-out infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.55);
+        }
+        70% {
+          box-shadow: 0 0 0 9px rgba(255, 69, 58, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(255, 69, 58, 0);
+        }
+      }
+      /* transcribing: spinner */
+      #spinner {
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-top-color: #6ea8ff;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      /* done: green check */
+      #check {
+        color: #32d74b;
+      }
+      #check svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+      }
+      /* error: red bang */
+      #bang {
+        color: #ff453a;
+        font-weight: 800;
+        font-size: 13px;
+        line-height: 14px;
+        text-align: center;
+      }
+      #pill[data-state='recording'] #dot,
+      #pill[data-state='transcribing'] #spinner,
+      #pill[data-state='done'] #check,
+      #pill[data-state='error'] #bang {
+        display: block;
+      }
+      #pill[data-state='error'] {
+        border-color: rgba(255, 69, 58, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="pill" data-state="idle">
+        <div class="icon" id="dot"></div>
+        <div class="icon" id="spinner"></div>
+        <div class="icon" id="check">
+          <svg viewBox="0 0 16 16" fill="none">
+            <path
+              d="M2.5 8.5L6 12L13.5 4.5"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+        <div class="icon" id="bang">!</div>
+        <div id="label"></div>
+      </div>
+    </div>
+    <script type="module" src="./src/pill.ts"></script>
+  </body>
+</html>

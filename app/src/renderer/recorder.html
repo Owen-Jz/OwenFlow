@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:"
+    />
+    <title>OwenFlow Recorder</title>
+  </head>
+  <body>
+    <!-- Hidden window: captures mic audio and replies with 16kHz mono WAV. -->
+    <script type="module" src="./src/recorder.ts"></script>
+  </body>
+</html>

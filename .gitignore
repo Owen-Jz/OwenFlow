@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+.tmp/
+*.wav
+*.mp3
+.env
