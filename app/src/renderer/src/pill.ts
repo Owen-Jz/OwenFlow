@@ -19,7 +19,7 @@ const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 
 // ─── Waveform config ─────────────────────────────────────────────────────────
 
-const NUM_BARS = 24
+const NUM_BARS = 20
 const IDLE_LEVEL = 0.09 // resting bar height (fraction of canvas height)
 const SMOOTHING = 0.28 // per-frame lerp toward target (60fps → ~80ms settle)
 
@@ -69,13 +69,14 @@ function drawBars(heights: Float32Array, alphas: Float32Array | null, now: numbe
   if (w === 0 || h === 0) return
   ctx.clearRect(0, 0, w, h)
 
+  // slim 2px bars, tight gaps — dense techy meter look at the smaller size
   const slot = w / NUM_BARS
-  const barW = Math.max(2, slot * 0.5)
-  const radius = barW / 2
+  const barW = 2
+  const radius = 1
 
   ctx.fillStyle = barGradient(w)
   ctx.shadowColor = 'rgba(139, 92, 246, 0.55)'
-  ctx.shadowBlur = 5
+  ctx.shadowBlur = 4
 
   for (let i = 0; i < NUM_BARS; i++) {
     const frac = Math.min(1, Math.max(IDLE_LEVEL, heights[i]))

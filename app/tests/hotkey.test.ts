@@ -21,6 +21,7 @@ const { handlers, fakeHook } = vi.hoisted(() => {
 vi.mock('uiohook-napi', () => ({
   uIOhook: fakeHook,
   UiohookKey: {
+    Escape: 0x0001,
     Ctrl: 0x001d,
     CtrlRight: 0x0e1d,
     Alt: 0x0038,
@@ -55,6 +56,7 @@ const keydown = (keycode: number): void => handlers.keydown.forEach((h) => h({ k
 const keyup = (keycode: number): void => handlers.keyup.forEach((h) => h({ keycode }))
 
 const RIGHT_CTRL = 0x0e1d
+const ESCAPE = 0x0001
 
 describe('resolveHotkeyKeycode', () => {
   it('maps supported names to uiohook keycodes', () => {
@@ -77,7 +79,9 @@ describe('resolveHotkeyKeycode', () => {
 describe('hotkey hold/toggle behavior', () => {
   let onStart: ReturnType<typeof vi.fn>
   let onStop: ReturnType<typeof vi.fn>
+  let onCancel: ReturnType<typeof vi.fn>
   let enabled = true
+  let dictationActive = false
 
   beforeEach(() => {
     stopHotkey()
@@ -85,11 +89,21 @@ describe('hotkey hold/toggle behavior', () => {
     handlers.keyup.length = 0
     onStart = vi.fn()
     onStop = vi.fn()
+    onCancel = vi.fn()
     enabled = true
+    dictationActive = false
   })
 
   const start = (mode: 'hold' | 'toggle', hotkey = 'RightCtrl'): void =>
-    startHotkey({ hotkey, mode, isEnabled: () => enabled, onStart, onStop })
+    startHotkey({
+      hotkey,
+      mode,
+      isEnabled: () => enabled,
+      onStart,
+      onStop,
+      isDictationActive: () => dictationActive,
+      onCancel
+    })
 
   it('hold mode: keydown starts, keyup stops, repeat keydowns are ignored', () => {
     start('hold')
@@ -157,5 +171,86 @@ describe('hotkey hold/toggle behavior', () => {
     expect(onStart).toHaveBeenCalledTimes(1)
     reconfigureHotkey('F4', 'hold')
     expect(onStop).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('escape cancel', () => {
+  let onStart: ReturnType<typeof vi.fn>
+  let onStop: ReturnType<typeof vi.fn>
+  let onCancel: ReturnType<typeof vi.fn>
+  let dictationActive = false
+
+  beforeEach(() => {
+    stopHotkey()
+    handlers.keydown.length = 0
+    handlers.keyup.length = 0
+    onStart = vi.fn(() => (dictationActive = true))
+    onStop = vi.fn()
+    onCancel = vi.fn(() => (dictationActive = false))
+    dictationActive = false
+  })
+
+  const start = (mode: 'hold' | 'toggle'): void =>
+    startHotkey({
+      hotkey: 'RightCtrl',
+      mode,
+      isEnabled: () => true,
+      onStart,
+      onStop,
+      isDictationActive: () => dictationActive,
+      onCancel
+    })
+
+  it('escape during an active dictation calls onCancel', () => {
+    start('hold')
+    keydown(RIGHT_CTRL)
+    expect(onStart).toHaveBeenCalledTimes(1)
+    keydown(ESCAPE)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('escape is ignored when no dictation is active (normal Escape usage)', () => {
+    start('hold')
+    keydown(ESCAPE)
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onStop).not.toHaveBeenCalled()
+  })
+
+  it('escape also covers the transcribing phase (active after hotkey released)', () => {
+    start('hold')
+    keydown(RIGHT_CTRL)
+    keyup(RIGHT_CTRL) // stop → transcribing; pipeline still active
+    expect(onStop).toHaveBeenCalledTimes(1)
+    keydown(ESCAPE)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('hold mode: keyup after escape fires onStop but key-repeat cannot restart', () => {
+    start('hold')
+    keydown(RIGHT_CTRL)
+    keydown(ESCAPE)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    // hotkey still physically held — OS key-repeat must NOT restart a recording
+    keydown(RIGHT_CTRL)
+    keydown(RIGHT_CTRL)
+    expect(onStart).toHaveBeenCalledTimes(1)
+    // release: onStop fires (downstream stopDictation is a no-op once cancelled)
+    keyup(RIGHT_CTRL)
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('toggle mode: escape resets toggle state so the next press starts fresh', () => {
+    start('toggle')
+    keydown(RIGHT_CTRL)
+    keyup(RIGHT_CTRL)
+    expect(onStart).toHaveBeenCalledTimes(1)
+    keydown(ESCAPE)
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    // next hotkey press must START a new dictation, not act as a "stop"
+    keydown(RIGHT_CTRL)
+    keyup(RIGHT_CTRL)
+    expect(onStart).toHaveBeenCalledTimes(2)
+    expect(onStop).not.toHaveBeenCalled()
   })
 })

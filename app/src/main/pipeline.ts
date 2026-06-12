@@ -39,17 +39,21 @@ export interface PipelineDeps {
   cleanup?: (raw: string, settings: OwenFlowSettings) => Promise<string>
   /** injector.ts — clipboard-swap paste into the focused app. */
   inject?: (text: string) => Promise<void>
-  /**
-   * tagger.ts — fire-and-forget background topic-tagging of the appended
-   * history entry. Called AFTER inject; must never block or throw.
-   */
-  autoTag?: (ts: number, transcript: string) => void
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
 let deps: PipelineDeps | null = null
+/** Recording phase active (mic capturing). */
 let dictating = false
+/** Stop in-flight (transcribe/cleanup/inject still running). */
+let processing = false
+/**
+ * Cancellation generation counter. Bumped on every start AND on cancel; an
+ * in-flight stopDictation() captures the value at entry and bails after every
+ * await if it no longer matches — so a late sidecar response can't paste.
+ */
+let generation = 0
 let hideTimer: NodeJS.Timeout | null = null
 
 export function initPipeline(pipelineDeps: PipelineDeps): void {
@@ -60,15 +64,44 @@ export function isDictating(): boolean {
   return dictating
 }
 
+/** True while recording OR while a stop (transcribe/cleanup/inject) is in flight. */
+export function isDictationActive(): boolean {
+  return dictating || processing
+}
+
 // ─── Public API (hotkey layer calls these) ──────────────────────────────────
 
 /** Begin a dictation (hotkey pressed / toggled on). */
 export async function startDictation(): Promise<void> {
-  if (!deps || dictating) return
+  if (!deps || dictating || processing) return
   dictating = true
+  generation++
   if (hideTimer) clearTimeout(hideTimer)
   deps.setPillState({ state: 'recording' })
   deps.recorderStart()
+}
+
+/**
+ * Abort the current dictation (Escape pressed). Works while recording AND
+ * while transcribing: the recorder is stopped and its audio discarded, any
+ * in-flight transcription/cleanup result is invalidated via the generation
+ * counter (nothing is injected, nothing goes to history) and the pill hides
+ * immediately. Returns true if there was anything to cancel.
+ */
+export function cancelDictation(): boolean {
+  if (!deps || (!dictating && !processing)) return false
+  generation++ // invalidate any in-flight stopDictation()
+  if (dictating) {
+    dictating = false
+    // Stop the recorder so the mic releases; discard whatever it captured.
+    void Promise.resolve()
+      .then(() => deps?.recorderStop())
+      .catch(() => {})
+  }
+  processing = false
+  if (hideTimer) clearTimeout(hideTimer)
+  deps.setPillState({ state: 'idle' }) // renderer does a brief fade-out
+  return true
 }
 
 /**
@@ -78,6 +111,8 @@ export async function startDictation(): Promise<void> {
 export async function stopDictation(): Promise<void> {
   if (!deps || !dictating) return
   dictating = false
+  processing = true
+  const gen = generation
   const startedAt = Date.now()
 
   deps.setPillState({ state: 'transcribing' })
@@ -86,9 +121,12 @@ export async function stopDictation(): Promise<void> {
   try {
     wav = await deps.recorderStop()
   } catch (err) {
+    if (gen !== generation) return // cancelled mid-flight
+    processing = false
     failPill(err instanceof Error ? err.message : 'Recorder failed')
     return
   }
+  if (gen !== generation) return // cancelled — discard the audio
 
   const settings = deps.getSettings()
 
@@ -99,12 +137,16 @@ export async function stopDictation(): Promise<void> {
     const result = await deps.transcribe(wav, settings)
     raw = result.text.trim()
   } catch (err) {
+    if (gen !== generation) return
+    processing = false
     failPill(err instanceof Error ? err.message : 'Transcription failed')
     return
   }
+  if (gen !== generation) return // cancelled — ignore the late transcript
 
   // 2. Empty / silence → flash "—", inject nothing.
   if (!raw) {
+    processing = false
     failPill('—', 1500)
     return
   }
@@ -121,6 +163,7 @@ export async function stopDictation(): Promise<void> {
     } catch {
       cleaned = raw
     }
+    if (gen !== generation) return // cancelled — ignore the cleanup result
   }
 
   // 4. Dictionary "wrong=>right" replacements.
@@ -132,22 +175,19 @@ export async function stopDictation(): Promise<void> {
     if (!deps.inject) throw new Error('Injector unavailable')
     await deps.inject(final)
   } catch (err) {
+    if (gen !== generation) return
+    processing = false
     // Text is left on the clipboard by the injector — still record history.
     appendEntry(raw, final, startedAt, settings.flowMode)
     failPill(err instanceof Error ? err.message : 'Paste failed')
     return
   }
+  if (gen !== generation) return
 
-  const ts = appendEntry(raw, final, startedAt, settings.flowMode)
+  processing = false
+  appendEntry(raw, final, startedAt, settings.flowMode)
   deps.setPillState({ state: 'done' })
   scheduleHide(1200)
-
-  // 6. Background auto-tagging — fire-and-forget AFTER inject, never delays paste.
-  try {
-    deps.autoTag?.(ts, final)
-  } catch {
-    /* tagging is best-effort */
-  }
 }
 
 /**
@@ -155,8 +195,9 @@ export async function stopDictation(): Promise<void> {
  * done) without touching the mic, so the pill UI can be verified visually.
  */
 export async function simulateDictation(): Promise<void> {
-  if (!deps || dictating) return
+  if (!deps || dictating || processing) return
   dictating = true
+  generation++
   deps.setPillState({ state: 'recording' })
   await delay(1500)
   deps.setPillState({ state: 'transcribing' })
@@ -176,7 +217,7 @@ export async function simulateDictation(): Promise<void> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function appendEntry(raw: string, final: string, startedAt: number, mode: string): number {
+function appendEntry(raw: string, final: string, startedAt: number, mode: string): void {
   const ts = Date.now()
   deps?.appendHistory({
     ts,
@@ -186,7 +227,6 @@ function appendEntry(raw: string, final: string, startedAt: number, mode: string
     tags: [],
     mode
   })
-  return ts
 }
 
 function failPill(message: string, hideAfterMs = 3000): void {

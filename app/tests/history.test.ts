@@ -75,6 +75,17 @@ describe('history tags', () => {
     expect(entries.find((e) => e.ts === 1)?.tags).toEqual([])
   })
 
+  it('updateTags persists removal down to an empty tag set (chip ✕ path)', () => {
+    append(entry(300, { tags: ['work', 'fluxboard'] }))
+
+    expect(updateTags(300, ['work'])).toBe(true)
+    expect(list()[0].tags).toEqual(['work'])
+
+    expect(updateTags(300, [])).toBe(true)
+    expect(list()[0].tags).toEqual([])
+    expect(listTags()).toEqual([])
+  })
+
   it('updateTags returns false when no entry matches', () => {
     append(entry(7))
     expect(updateTags(999, ['nope'])).toBe(false)

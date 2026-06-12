@@ -60,6 +60,14 @@ export interface HotkeyOptions {
   isEnabled: () => boolean
   onStart: () => void
   onStop: () => void
+  /**
+   * True while a dictation is active (recording OR transcribing). Escape is
+   * only intercepted while this returns true, so normal Escape usage in other
+   * apps is unaffected.
+   */
+  isDictationActive: () => boolean
+  /** Escape pressed during an active dictation — abort everything. */
+  onCancel: () => void
 }
 
 let opts: HotkeyOptions | null = null
@@ -72,7 +80,22 @@ let toggled = false
 let running = false
 
 function onKeydown(e: { keycode: number }): void {
-  if (!opts || e.keycode !== targetKeycode) return
+  if (!opts) return
+
+  // Escape aborts an active dictation (recording or transcribing). Only act
+  // while a dictation is in flight so Escape behaves normally everywhere else.
+  if (e.keycode === UiohookKey.Escape) {
+    if (!opts.isDictationActive()) return
+    // Toggle mode: reset so the next hotkey press starts fresh instead of
+    // being treated as "stop". (Hold mode keeps `held` — the upcoming keyup
+    // fires onStop, which is a no-op once the dictation is cancelled, and
+    // keeping it set prevents OS key-repeat from restarting a recording.)
+    toggled = false
+    opts.onCancel()
+    return
+  }
+
+  if (e.keycode !== targetKeycode) return
 
   if (mode === 'hold') {
     if (held) return // OS key-repeat

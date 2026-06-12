@@ -51,6 +51,9 @@ const api: OwenFlowApi = {
     onShowTab: (cb: (tab: 'settings' | 'history') => void) =>
       subscribe<['settings' | 'history']>(IPC.uiShowTab, cb)
   },
+  clipboard: {
+    write: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.clipboardWrite, text)
+  },
   debug: {
     simulateDictation: (): Promise<void> => ipcRenderer.invoke(IPC.debugSimulate)
   }

@@ -308,6 +308,10 @@
         color: var(--text);
         border-color: var(--accent);
       }
+      .entry button.copy.failed {
+        color: var(--red);
+        border-color: rgba(255, 69, 58, 0.45);
+      }
       .empty {
         color: var(--text-dim);
         text-align: center;
@@ -412,6 +416,43 @@
         width: 110px;
         min-width: 0;
         outline: none;
+      }
+      /* inline tag editor: input + suggestions dropdown */
+      .tag-editor {
+        position: relative;
+        display: inline-flex;
+      }
+      .tag-suggest {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        z-index: 10;
+        min-width: 130px;
+        max-height: 168px;
+        overflow-y: auto;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        padding: 3px;
+      }
+      .tag-suggest.show {
+        display: block;
+      }
+      .tag-suggest .item {
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: var(--text-dim);
+        border-radius: 6px;
+        padding: 4px 8px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tag-suggest .item:hover,
+      .tag-suggest .item.hl {
+        background: rgba(139, 92, 246, 0.18);
+        color: #ddd6fe;
       }
       .entry .mode-badge {
         color: var(--text-dim);

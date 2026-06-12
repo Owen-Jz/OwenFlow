@@ -116,6 +116,13 @@ export interface OwenFlowApi {
     /** Settings window: main asks to switch tab ("settings" | "history"). */
     onShowTab: (cb: (tab: 'settings' | 'history') => void) => () => void
   }
+  clipboard: {
+    /**
+     * Copy text via main-process Electron clipboard ("clipboard:write").
+     * navigator.clipboard is unavailable in the packaged file:// context.
+     */
+    write: (text: string) => Promise<boolean>
+  }
   debug: {
     /** Trigger the stub pipeline so the pill can be visually verified. */
     simulateDictation: () => Promise<void>
@@ -136,6 +143,7 @@ export const IPC = {
   historyClear: 'history:clear',
   historyUpdateTags: 'history:updateTags',
   historyTags: 'history:tags',
+  clipboardWrite: 'clipboard:write',
   uiShowTab: 'ui:show-tab',
   debugSimulate: 'debug:simulate-dictation'
 } as const

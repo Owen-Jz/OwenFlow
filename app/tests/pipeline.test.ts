@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  cancelDictation,
   initPipeline,
   isDictating,
+  isDictationActive,
   startDictation,
   stopDictation,
   type PipelineDeps
@@ -187,5 +189,110 @@ describe('pipeline', () => {
     await stopDictation()
     await stopDictation() // second stop is a no-op too
     expect(deps.transcribe).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('escape cancel', () => {
+  /** Flush microtasks until cond() holds (bounded) — makes in-flight tests deterministic. */
+  async function flushUntil(cond: () => boolean): Promise<void> {
+    for (let i = 0; i < 50 && !cond(); i++) await Promise.resolve()
+    expect(cond()).toBe(true)
+  }
+
+  it('cancel while recording: audio discarded, nothing transcribed/injected/recorded', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings(), order)
+    initPipeline(deps)
+
+    await startDictation()
+    expect(isDictationActive()).toBe(true)
+
+    expect(cancelDictation()).toBe(true)
+    expect(isDictating()).toBe(false)
+    expect(isDictationActive()).toBe(false)
+    // recorder stopped so the mic releases (result discarded)
+    await Promise.resolve() // flush the fire-and-forget recorderStop
+    expect(deps.recorderStop).toHaveBeenCalledTimes(1)
+    // pill hidden immediately
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'idle' })
+
+    // a stop after cancel is a no-op — nothing runs
+    await stopDictation()
+    expect(deps.transcribe).not.toHaveBeenCalled()
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+  })
+
+  it('cancel while transcribing: late sidecar result is ignored, no inject, no history', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings(), order)
+    // transcription resolves only when WE say so (after the cancel)
+    let resolveTranscribe!: (r: { text: string; durationMs: number }) => void
+    deps.transcribe.mockImplementation(
+      () => new Promise((resolve) => (resolveTranscribe = resolve))
+    )
+    initPipeline(deps)
+
+    await startDictation()
+    const stopPromise = stopDictation() // in-flight: awaiting the sidecar
+    await flushUntil(() => deps.transcribe.mock.calls.length === 1)
+    expect(isDictationActive()).toBe(true)
+
+    expect(cancelDictation()).toBe(true)
+    expect(isDictationActive()).toBe(false)
+
+    // sidecar responds LATE, after the cancel — must be ignored entirely
+    resolveTranscribe({ text: 'late response that must not paste', durationMs: 999 })
+    await stopPromise
+
+    expect(deps.cleanup).not.toHaveBeenCalled()
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+    // no done/error state after the cancel — pill stays hidden
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'idle' })
+  })
+
+  it('cancel while cleanup is in flight: cleaned text never pastes', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings(), order)
+    let resolveCleanup!: (s: string) => void
+    deps.cleanup.mockImplementation(() => new Promise((resolve) => (resolveCleanup = resolve)))
+    initPipeline(deps)
+
+    await startDictation()
+    const stopPromise = stopDictation()
+    await flushUntil(() => deps.cleanup.mock.calls.length === 1)
+
+    cancelDictation()
+    resolveCleanup('cleaned text that must not paste')
+    await stopPromise
+
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+  })
+
+  it('cancel with nothing active is a no-op', () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings(), order)
+    initPipeline(deps)
+    expect(cancelDictation()).toBe(false)
+    expect(deps.setPillState).not.toHaveBeenCalled()
+    expect(deps.recorderStop).not.toHaveBeenCalled()
+  })
+
+  it('a fresh dictation after a cancel runs end-to-end normally', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), order)
+    initPipeline(deps)
+
+    await startDictation()
+    cancelDictation()
+
+    await startDictation()
+    await stopDictation()
+    expect(deps.inject).toHaveBeenCalledTimes(1)
+    expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
+    expect(deps.appendHistory).toHaveBeenCalledTimes(1)
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
   })
 })

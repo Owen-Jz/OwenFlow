@@ -123,6 +123,9 @@ const activeFilterName = $('active-filter-name')
 /** Currently active tag filter ('' = show all). */
 let filterTag = ''
 
+/** All known tags (refreshed with the filter dropdown) — feeds suggestions. */
+let knownTags: string[] = []
+
 function setFilter(tag: string): void {
   filterTag = tag
   tagFilter.value = tag
@@ -136,6 +139,7 @@ $('btn-clear-filter').addEventListener('click', () => setFilter(''))
 
 async function refreshTagFilter(): Promise<void> {
   const tags = await window.owenflow.history.tags()
+  knownTags = tags.map((t) => t.tag)
   tagFilter.replaceChildren()
   const all = document.createElement('option')
   all.value = ''
@@ -155,15 +159,28 @@ async function refreshTagFilter(): Promise<void> {
   tagFilter.value = filterTag
 }
 
-async function saveTags(entry: HistoryEntry, tags: string[]): Promise<void> {
-  entry.tags = tags
-  await window.owenflow.history.updateTags(entry.ts, tags)
-  await refreshHistory()
+/** Canonical renderer-side tag form (main normalizes again on write). */
+function normalizeTag(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
 function renderTags(entry: HistoryEntry): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'tags'
+
+  // Persist + re-render only this entry's tag strip — no full-list reload, so
+  // there is no flicker. Full refresh only when the active filter no longer
+  // matches this entry (it must drop out of the list).
+  const save = async (tags: string[]): Promise<void> => {
+    await window.owenflow.history.updateTags(entry.ts, tags)
+    entry.tags = tags
+    if (filterTag && !tags.includes(filterTag)) {
+      await refreshHistory()
+      return
+    }
+    wrap.replaceWith(renderTags(entry))
+    void refreshTagFilter() // keep dropdown counts + suggestions current
+  }
 
   for (const tag of entry.tags) {
     const chip = document.createElement('span')
@@ -180,10 +197,7 @@ function renderTags(entry: HistoryEntry): HTMLElement {
     x.title = `Remove #${tag}`
     x.addEventListener('click', (e) => {
       e.stopPropagation()
-      void saveTags(
-        entry,
-        entry.tags.filter((t) => t !== tag)
-      )
+      void save(entry.tags.filter((t) => t !== tag))
     })
 
     chip.append(name, x)
@@ -194,26 +208,88 @@ function renderTags(entry: HistoryEntry): HTMLElement {
   add.className = 'tag-add'
   add.textContent = '+ tag'
   add.addEventListener('click', () => {
+    const editor = document.createElement('span')
+    editor.className = 'tag-editor'
+
     const input = document.createElement('input')
     input.className = 'tag-input'
     input.placeholder = 'new-tag'
     input.spellcheck = false
-    add.replaceWith(input)
+
+    const suggest = document.createElement('div')
+    suggest.className = 'tag-suggest'
+    let highlighted = -1
+
+    editor.append(input, suggest)
+    add.replaceWith(editor)
     input.focus()
 
-    const commit = (): void => {
-      const tag = input.value.trim().toLowerCase().replace(/\s+/g, '-')
+    // Guard: Enter triggers commit AND the resulting DOM swap fires blur —
+    // without this flag the same tag would be committed twice.
+    let done = false
+    const close = (): void => {
+      if (done) return
+      done = true
+      editor.replaceWith(add)
+    }
+    const commit = (raw: string): void => {
+      if (done) return
+      const tag = normalizeTag(raw)
       if (tag && !entry.tags.includes(tag)) {
-        void saveTags(entry, [...entry.tags, tag])
+        done = true
+        void save([...entry.tags, tag])
       } else {
-        input.replaceWith(add)
+        close()
       }
     }
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') commit()
-      if (e.key === 'Escape') input.replaceWith(add)
+
+    const suggestions = (): string[] => {
+      const q = normalizeTag(input.value)
+      return knownTags
+        .filter((t) => !entry.tags.includes(t) && (!q || t.includes(q)))
+        .slice(0, 6)
+    }
+
+    const renderSuggest = (): void => {
+      const items = suggestions()
+      highlighted = Math.min(highlighted, items.length - 1)
+      suggest.replaceChildren()
+      suggest.classList.toggle('show', items.length > 0)
+      items.forEach((tag, i) => {
+        const item = document.createElement('div')
+        item.className = 'item' + (i === highlighted ? ' hl' : '')
+        item.textContent = `#${tag}`
+        // mousedown (not click) so it wins the race against the input's blur
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          commit(tag)
+        })
+        suggest.append(item)
+      })
+    }
+
+    input.addEventListener('input', () => {
+      highlighted = -1
+      renderSuggest()
     })
-    input.addEventListener('blur', () => commit())
+    input.addEventListener('keydown', (e) => {
+      const items = suggestions()
+      if (e.key === 'ArrowDown' && items.length) {
+        e.preventDefault()
+        highlighted = (highlighted + 1) % items.length
+        renderSuggest()
+      } else if (e.key === 'ArrowUp' && items.length) {
+        e.preventDefault()
+        highlighted = (highlighted - 1 + items.length) % items.length
+        renderSuggest()
+      } else if (e.key === 'Enter') {
+        commit(highlighted >= 0 && items[highlighted] ? items[highlighted] : input.value)
+      } else if (e.key === 'Escape') {
+        close()
+      }
+    })
+    input.addEventListener('blur', () => commit(input.value))
+    renderSuggest()
   })
   wrap.append(add)
 
@@ -254,9 +330,20 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
   copy.className = 'copy'
   copy.textContent = 'Copy'
   copy.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(entry.final)
-    copy.textContent = 'Copied ✓'
-    setTimeout(() => (copy.textContent = 'Copy'), 1200)
+    // navigator.clipboard is undefined in the packaged file:// context
+    // (not a secure context) — copy through main via IPC instead.
+    let ok = false
+    try {
+      ok = await window.owenflow.clipboard.write(entry.final)
+    } catch {
+      ok = false
+    }
+    copy.textContent = ok ? 'Copied ✓' : 'Copy failed'
+    copy.classList.toggle('failed', !ok)
+    setTimeout(() => {
+      copy.textContent = 'Copy'
+      copy.classList.remove('failed')
+    }, 1200)
   })
 
   el.append(body, copy)

@@ -37,27 +37,62 @@
         justify-content: center;
       }
       #pill {
+        position: relative;
         display: flex;
         align-items: center;
-        gap: 8px;
-        height: 52px;
-        width: 240px;
-        padding: 0 16px;
-        border-radius: 26px;
-        background: linear-gradient(180deg, rgba(26, 26, 34, 0.94), rgba(13, 13, 20, 0.96));
-        border: 1px solid rgba(139, 92, 246, 0.22);
+        gap: 7px;
+        height: 40px;
+        width: 200px;
+        padding: 0 12px;
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(22, 22, 30, 0.95), rgba(11, 11, 17, 0.97));
+        border: 1px solid rgba(139, 92, 246, 0.32);
         box-shadow:
-          0 8px 28px rgba(0, 0, 0, 0.5),
-          0 0 18px rgba(139, 92, 246, 0.12),
-          inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        backdrop-filter: blur(14px);
+          0 6px 20px rgba(0, 0, 0, 0.55),
+          0 0 14px rgba(139, 92, 246, 0.14),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05),
+          inset 0 0 10px rgba(139, 92, 246, 0.05);
+        backdrop-filter: blur(12px);
         opacity: 0;
-        transform: translateY(10px) scale(0.92);
+        transform: translateY(8px) scale(0.94);
         transition:
-          opacity 180ms ease,
-          transform 220ms cubic-bezier(0.2, 0.9, 0.3, 1.2),
-          border-color 240ms ease,
-          box-shadow 240ms ease;
+          opacity 160ms ease,
+          transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.15),
+          border-color 220ms ease,
+          box-shadow 220ms ease;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      /* faint scanline texture */
+      #pill::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: repeating-linear-gradient(
+          180deg,
+          rgba(139, 92, 246, 0.05) 0px,
+          rgba(139, 92, 246, 0.05) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        pointer-events: none;
+      }
+      /* faint top edge glow line */
+      #pill::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 14%;
+        right: 14%;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(139, 92, 246, 0.55),
+          rgba(59, 130, 246, 0.45),
+          transparent
+        );
         pointer-events: none;
       }
       #pill.visible {
@@ -68,7 +103,7 @@
       #wave {
         display: none;
         flex: 1 1 auto;
-        height: 32px;
+        height: 24px;
         min-width: 0;
       }
       #pill[data-state='recording'] #wave,
@@ -76,20 +111,32 @@
         display: block;
       }
       .icon {
-        width: 14px;
-        height: 14px;
         flex: 0 0 auto;
         display: none;
         position: relative;
       }
-      /* recording: tiny red rec dot */
-      #dot {
-        width: 7px;
-        height: 7px;
+      /* recording: tiny red rec dot + 8px mono REC glyph */
+      #rec {
+        align-items: center;
+        gap: 4px;
+      }
+      #pill[data-state='recording'] #rec {
+        display: flex;
+      }
+      #rec .dot {
+        width: 5px;
+        height: 5px;
         border-radius: 50%;
         background: #ff453a;
-        box-shadow: 0 0 6px rgba(255, 69, 58, 0.8);
+        box-shadow: 0 0 5px rgba(255, 69, 58, 0.85);
         animation: blink 1.3s ease-in-out infinite;
+      }
+      #rec .glyph {
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        color: rgba(255, 99, 88, 0.85);
+        line-height: 1;
       }
       @keyframes blink {
         0%,
@@ -100,17 +147,40 @@
           opacity: 0.35;
         }
       }
+      /* transcribing: tiny morphing mono dots */
+      #proc {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        color: rgba(167, 139, 250, 0.9);
+        line-height: 1;
+        width: 14px;
+        overflow: hidden;
+        white-space: nowrap;
+        animation: dots 900ms steps(3, end) infinite;
+      }
+      #pill[data-state='transcribing'] #proc {
+        display: block;
+      }
+      @keyframes dots {
+        0% {
+          width: 4px;
+        }
+        100% {
+          width: 14px;
+        }
+      }
       /* done: green check pop */
       #check {
         color: #32d74b;
         margin: 0 auto;
       }
       #check svg {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
         display: block;
-        filter: drop-shadow(0 0 5px rgba(50, 215, 75, 0.6));
-        animation: pop 260ms cubic-bezier(0.2, 1.4, 0.4, 1);
+        filter: drop-shadow(0 0 4px rgba(50, 215, 75, 0.6));
+        animation: pop 240ms cubic-bezier(0.2, 1.4, 0.4, 1);
       }
       @keyframes pop {
         0% {
@@ -126,22 +196,21 @@
       #bang {
         color: #ff453a;
         font-weight: 700;
-        font-size: 12px;
-        line-height: 14px;
+        font-size: 11px;
+        line-height: 12px;
         text-align: center;
       }
       /* micro-typography label: error messages only */
       #label {
         display: none;
         color: rgba(240, 240, 245, 0.88);
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 500;
         letter-spacing: 0.04em;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      #pill[data-state='recording'] #dot,
       #pill[data-state='done'] #check,
       #pill[data-state='error'] #bang {
         display: block;
@@ -150,21 +219,25 @@
         display: block;
       }
       #pill[data-state='done'] {
-        border-color: rgba(50, 215, 75, 0.45);
+        border-color: rgba(50, 215, 75, 0.5);
         box-shadow:
-          0 8px 28px rgba(0, 0, 0, 0.5),
-          0 0 20px rgba(50, 215, 75, 0.25),
-          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          0 6px 20px rgba(0, 0, 0, 0.55),
+          0 0 16px rgba(50, 215, 75, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
       }
       #pill[data-state='error'] {
-        border-color: rgba(255, 69, 58, 0.4);
+        border-color: rgba(255, 69, 58, 0.45);
       }
     </style>
   </head>
   <body>
     <div id="stage">
       <div id="pill" data-state="idle">
-        <div class="icon" id="dot"></div>
+        <div class="icon" id="rec">
+          <span class="dot"></span>
+          <span class="glyph">REC</span>
+        </div>
+        <div class="icon" id="proc">···</div>
         <canvas id="wave"></canvas>
         <div class="icon" id="check">
           <svg viewBox="0 0 16 16" fill="none">

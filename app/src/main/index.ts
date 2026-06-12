@@ -2,6 +2,7 @@ import { app, ipcMain, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
 import * as history from './history'
+import { clipboardWrite } from './clipboard'
 import { createTray, refreshTrayMenu } from './tray'
 import {
   createPillWindow,
@@ -12,8 +13,10 @@ import {
   setPillState
 } from './windows'
 import {
+  cancelDictation,
   initPipeline,
   isDictating,
+  isDictationActive,
   simulateDictation,
   startDictation,
   stopDictation
@@ -29,7 +32,6 @@ import {
 } from './sidecar'
 import { inject, killInjector, warmupInjector } from './injector'
 import { cleanup } from './cleanup'
-import { autoTag } from './tagger'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -112,6 +114,10 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.historyTags, () => history.listTags())
 
+  // History "Copy" button: navigator.clipboard is unavailable in the packaged
+  // file:// renderer (not a secure context), so copy goes through main.
+  ipcMain.handle(IPC.clipboardWrite, (_event, text: unknown) => clipboardWrite(text))
+
   ipcMain.handle(IPC.debugSimulate, async () => {
     await simulateDictation()
   })
@@ -167,9 +173,7 @@ app.whenReady().then(async () => {
       return transcribe(wav, promptWords.join(', ') || undefined, settings.language || undefined)
     },
     cleanup,
-    inject,
-    // Non-blocking background topic-tagging (fires after inject, 8s cap).
-    autoTag: (ts, transcript) => autoTag(ts, transcript, getSettings(), history.updateTags)
+    inject
   })
 
   const tray = createTray({
@@ -215,6 +219,11 @@ app.whenReady().then(async () => {
     },
     onStop: () => {
       if (isDictating()) void stopDictation()
+    },
+    // Escape aborts an active dictation (recording or transcribing).
+    isDictationActive,
+    onCancel: () => {
+      cancelDictation()
     }
   })
 

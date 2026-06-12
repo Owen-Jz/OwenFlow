@@ -1,13 +1,21 @@
 /**
  * MiniMax post-processing pass, driven by the flow mode:
- *  - normal: optional cleanup (punctuation/casing/fillers) — respects cleanupEnabled
+ *  - normal: cleanup + restructuring (fillers out, well-formed sentences,
+ *            faithful to what was said) — respects cleanupEnabled, and skips
+ *            the LLM entirely for very short transcripts (≤3 words)
  *  - vibe:   restructures rambly speech into a refined AI coding prompt — ALWAYS
  *            runs when an API key is set (ignores cleanupEnabled)
  *  - formal: client-ready professional rewrite — same gating as vibe
  *
+ * Latency notes (measured live 2026-06-12 against MiniMax-M2.5, a reasoning
+ * model — thinking can NOT be disabled on M2.x): terse prompts + temperature 0
+ * + a max_tokens cap cut p50 from ~4.7s/7.0s (short/long) to ~2.5s/3.9s, with
+ * the worst observed run at 8.0s. Legacy fast models (MiniMax-Text-01, M1,
+ * abab6.5s) are unavailable on this key; M2 / M2.5-highspeed were no faster.
+ *
  * Contract: NEVER throws, never blocks the pipeline — any error, timeout
- * (6s normal / 12s vibe+formal), non-200, missing key or empty reply returns
- * the raw transcript unchanged.
+ * (15s, all modes — measured p95 ~6s + headroom), non-200, missing key or
+ * empty reply returns the raw transcript unchanged.
  */
 
 import type { FlowMode, OwenFlowSettings } from '../shared/types'
@@ -15,33 +23,45 @@ import type { FlowMode, OwenFlowSettings } from '../shared/types'
 const MINIMAX_URL = 'https://api.minimax.io/v1/text/chatcompletion_v2'
 const MODEL = 'MiniMax-M2.5'
 
-/** Vibe/formal rewrite more text — give them longer. */
+/** Measured p95 ≈ 6s on long dictations; generous headroom so vibe/formal
+ *  reliably finish instead of silently falling back to the raw transcript. */
 const TIMEOUT_MS: Record<FlowMode, number> = {
-  normal: 6_000,
-  vibe: 12_000,
-  formal: 12_000
+  normal: 15_000,
+  vibe: 15_000,
+  formal: 15_000
 }
 
+/** Caps runaway reasoning/output — reasoning tokens count toward this. */
+const MAX_TOKENS = 1_500
+
+/**
+ * Normal-mode transcripts of ≤ this many words skip the LLM entirely:
+ * nothing to restructure, and the user gets an instant paste.
+ */
+const SKIP_WORD_COUNT = 3
+
+// Terse prompts on purpose: M2.5 is a reasoning model and measurably thinks
+// (and waits) less with tight instructions.
 const SYSTEM_PROMPTS: Record<FlowMode, string> = {
   normal: [
-    'You clean up raw speech-to-text dictation transcripts.',
-    'Fix punctuation and casing. Remove filler words (um, uh, like, you know, sort of) and false starts.',
-    'Keep the meaning and the original wording otherwise verbatim — do NOT paraphrase, summarize, answer questions, or add anything.',
-    'Output ONLY the cleaned text, with no quotes, labels or commentary.'
+    'Rewrite this raw speech-to-text dictation transcript:',
+    'remove filler words (um, uh, like, you know, sort of) and false starts,',
+    'fix punctuation and casing, and restructure into well-formed sentences that make sense in context —',
+    'stay faithful to what was said; never add, answer, or summarize.',
+    'Output ONLY the rewritten text — no quotes, labels or commentary.'
   ].join(' '),
   vibe: [
-    'You turn raw spoken dictation from a developer into a clear, well-structured prompt for an AI coding assistant.',
-    'The input is a rambly spoken thought; rewrite it into a refined prompt.',
-    'Preserve ALL technical specifics exactly: names, file paths, identifiers, versions, numbers, and constraints.',
-    'When it reads naturally, organize the prompt as goal, then context, then requirements.',
-    'Tighten the wording and remove filler, but do NOT invent requirements, assumptions, or details that were not said.',
+    'Rewrite this raw spoken developer dictation into a clear, well-structured prompt for an AI coding assistant.',
+    'Preserve ALL technical specifics exactly: names, file paths, identifiers, versions, numbers, constraints.',
+    'Organize as goal, then context, then requirements when natural. Remove filler;',
+    'do NOT invent requirements or details that were not said.',
     'Output ONLY the refined prompt — no preamble, no commentary, no markdown code fences.'
   ].join(' '),
   formal: [
-    'You rewrite raw spoken dictation into polished professional prose suitable for a message to a client.',
-    'Make it courteous, clear and well structured. Remove slang, filler words and false starts.',
+    'Rewrite this raw spoken dictation into polished professional prose suitable for a message to a client.',
+    'Courteous, clear, well structured; remove slang, filler words and false starts.',
     'Keep the meaning exactly — do NOT add promises, facts or details that were not said.',
-    'Output ONLY the rewritten text, with no quotes, labels or commentary.'
+    'Output ONLY the rewritten text — no quotes, labels or commentary.'
   ].join(' ')
 }
 
@@ -55,8 +75,13 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
   // Normal mode is an opt-in cleanup pass; vibe/formal REQUIRE the API and
   // ignore the cleanupEnabled toggle (no key → graceful raw fallback).
   if (mode === 'normal' && !settings.cleanupEnabled) return raw
-  if (!settings.minimaxApiKey) return raw
   if (!raw.trim()) return raw
+
+  // Very short normal-mode dictations ("yes", "send it", "on my way") have
+  // nothing to restructure — skip the LLM round-trip for an instant paste.
+  if (mode === 'normal' && raw.trim().split(/\s+/).length <= SKIP_WORD_COUNT) return raw
+
+  if (!settings.minimaxApiKey) return raw
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS[mode])
@@ -73,7 +98,8 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
           { role: 'system', content: SYSTEM_PROMPTS[mode] },
           { role: 'user', content: raw }
         ],
-        temperature: 0.2
+        temperature: 0,
+        max_tokens: MAX_TOKENS
       }),
       signal: controller.signal
     })
