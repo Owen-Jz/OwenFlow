@@ -423,7 +423,7 @@ function renderFolderRail(): void {
 }
 
 /** Sentinel select value for the per-entry "New folder…" option. */
-const NEW_FOLDER = ' new-folder'
+const NEW_FOLDER = '\u0000new-folder'
 
 /** Per-entry 📁 dropdown: move to a folder / new folder / remove from folder. */
 function renderFolderControl(entry: HistoryEntry): HTMLElement {
@@ -671,27 +671,37 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
 
   body.append(ts, text, renderTags(entry))
 
-  const copy = document.createElement('button')
-  copy.className = 'copy'
-  copy.textContent = 'Copy'
-  copy.addEventListener('click', async () => {
-    // navigator.clipboard is undefined in the packaged file:// context
-    // (not a secure context) — copy through main via IPC instead.
-    let ok = false
-    try {
-      ok = await window.owenflow.clipboard.write(entry.final)
-    } catch {
-      ok = false
-    }
-    copy.textContent = ok ? 'Copied ✓' : 'Copy failed'
-    copy.classList.toggle('failed', !ok)
-    setTimeout(() => {
-      copy.textContent = 'Copy'
-      copy.classList.remove('failed')
-    }, 1200)
-  })
+  // navigator.clipboard is undefined in the packaged file:// context
+  // (not a secure context) — copy through main via IPC instead.
+  const makeCopyButton = (label: string, getText: () => string): HTMLButtonElement => {
+    const btn = document.createElement('button')
+    btn.className = 'copy'
+    btn.textContent = label
+    btn.addEventListener('click', async () => {
+      let ok = false
+      try {
+        ok = await window.owenflow.clipboard.write(getText())
+      } catch {
+        ok = false
+      }
+      btn.textContent = ok ? 'Copied ✓' : 'Copy failed'
+      btn.classList.toggle('failed', !ok)
+      setTimeout(() => {
+        btn.textContent = label
+        btn.classList.remove('failed')
+      }, 1200)
+    })
+    return btn
+  }
 
-  el.append(body, copy)
+  const copyWrap = document.createElement('div')
+  copyWrap.className = 'copy-group'
+  copyWrap.append(
+    makeCopyButton('Copy Formatted', () => entry.final),
+    makeCopyButton('Copy Raw', () => entry.raw)
+  )
+
+  el.append(body, copyWrap)
   return el
 }
 

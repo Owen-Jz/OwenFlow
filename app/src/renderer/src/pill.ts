@@ -252,7 +252,7 @@ type CueName = 'start' | 'stop' | 'cancel' | 'error'
 
 let audio: AudioContext | null = null
 
-const CUE_GAIN = 0.12 // ≈ -18 dBFS — present but polite
+const CUE_GAIN = 0.32 // clearly audible — Owen wants unmistakable start/stop feedback
 
 /** One short enveloped tone. */
 function tone(

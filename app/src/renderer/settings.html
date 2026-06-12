@@ -441,8 +441,15 @@
         word-break: break-word;
         line-height: 1.45;
       }
+      .entry .copy-group {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
       .entry button.copy {
         flex: 0 0 auto;
+        white-space: nowrap;
         background: var(--panel-2);
         border: 1px solid var(--border);
         color: var(--text-dim);
