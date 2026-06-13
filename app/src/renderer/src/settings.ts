@@ -85,8 +85,40 @@ const fMode = $<HTMLSelectElement>('f-mode')
 const fModel = $<HTMLSelectElement>('f-model')
 const fLanguage = $<HTMLInputElement>('f-language')
 const fCleanup = $<HTMLInputElement>('f-cleanup')
+const fCleanupProvider = $<HTMLSelectElement>('f-cleanup-provider')
 const fMinimaxKey = $<HTMLInputElement>('f-minimax-key')
 const fMinimaxGroup = $<HTMLInputElement>('f-minimax-group')
+const fGroqKey = $<HTMLInputElement>('f-groq-key')
+const fGroqModel = $<HTMLSelectElement>('f-groq-model')
+const minimaxKeyRow = $('minimax-key-row')
+const minimaxGroupRow = $('minimax-group-row')
+const groqKeyRow = $('groq-key-row')
+const groqModelRow = $('groq-model-row')
+/** Show only the active provider's credential rows. */
+function applyProviderVisibility(): void {
+  const groq = fCleanupProvider.value === 'groq'
+  groqKeyRow.classList.toggle('hidden', !groq)
+  groqModelRow.classList.toggle('hidden', !groq)
+  minimaxKeyRow.classList.toggle('hidden', groq)
+  minimaxGroupRow.classList.toggle('hidden', groq)
+}
+
+fCleanupProvider.addEventListener('change', applyProviderVisibility)
+
+// "Test & compare": time both providers (uses saved keys) and show the result.
+$('btn-compare').addEventListener('click', async () => {
+  const result = $('compare-result')
+  result.textContent = 'testing both providers…'
+  try {
+    const timings = await window.owenflow.cleanup.benchmark()
+    result.textContent = timings
+      .map((t) => `${t.provider}: ${t.ok ? `${(t.ms / 1000).toFixed(1)}s` : t.error}`)
+      .join('  ·  ')
+  } catch {
+    result.textContent = 'compare failed'
+  }
+})
+
 const fDictionary = $<HTMLTextAreaElement>('f-dictionary')
 const fStartup = $<HTMLInputElement>('f-startup')
 const saveStatus = $('save-status')
@@ -115,8 +147,12 @@ function fillForm(s: OwenFlowSettings): void {
   fModel.value = s.model
   fLanguage.value = s.language
   fCleanup.checked = s.cleanupEnabled
+  fCleanupProvider.value = s.cleanupProvider ?? 'groq'
   fMinimaxKey.value = s.minimaxApiKey
   fMinimaxGroup.value = s.minimaxGroupId
+  fGroqKey.value = s.groqApiKey
+  fGroqModel.value = s.groqModel || 'llama-3.3-70b-versatile'
+  applyProviderVisibility()
   fDictionary.value = s.dictionary.join('\n')
   fStartup.checked = s.launchOnStartup
   selectFlowMode(s.flowMode ?? 'normal')
@@ -131,8 +167,11 @@ function readForm(): Partial<OwenFlowSettings> {
     model: fModel.value as OwenFlowSettings['model'],
     language: fLanguage.value.trim(),
     cleanupEnabled: fCleanup.checked,
+    cleanupProvider: fCleanupProvider.value === 'minimax' ? 'minimax' : 'groq',
     minimaxApiKey: fMinimaxKey.value.trim(),
     minimaxGroupId: fMinimaxGroup.value.trim(),
+    groqApiKey: fGroqKey.value.trim(),
+    groqModel: fGroqModel.value,
     dictionary: fDictionary.value
       .split('\n')
       .map((line) => line.trim())

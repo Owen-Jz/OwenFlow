@@ -358,6 +358,9 @@
       .actions.hidden {
         display: none;
       }
+      .row.hidden {
+        display: none;
+      }
       button.primary,
       button.ghost,
       button.danger {
@@ -1036,6 +1039,33 @@
                 </label>
                 <input type="checkbox" id="f-cleanup" />
               </div>
+              <div class="row">
+                <label class="title" for="f-cleanup-provider">
+                  Refinement engine
+                  <span class="hint">Groq is fast (sub-second); MiniMax is slower but max-polish</span>
+                </label>
+                <select id="f-cleanup-provider">
+                  <option value="groq">Groq (fast)</option>
+                  <option value="minimax">MiniMax (polish)</option>
+                </select>
+              </div>
+              <div class="row" id="groq-key-row">
+                <label class="title" for="f-groq-key">
+                  Groq API key
+                  <span class="hint">Stored locally; free key at console.groq.com</span>
+                </label>
+                <input type="password" id="f-groq-key" spellcheck="false" />
+              </div>
+              <div class="row" id="groq-model-row">
+                <label class="title" for="f-groq-model">
+                  Groq model
+                  <span class="hint">70b = best balance; 8b-instant = fastest</span>
+                </label>
+                <select id="f-groq-model">
+                  <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                  <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                </select>
+              </div>
               <div class="row" id="minimax-key-row">
                 <label class="title" for="f-minimax-key">
                   MiniMax API key
@@ -1046,6 +1076,16 @@
               <div class="row" id="minimax-group-row">
                 <label class="title" for="f-minimax-group">MiniMax group ID</label>
                 <input type="text" id="f-minimax-group" spellcheck="false" />
+              </div>
+              <div class="row">
+                <label class="title">
+                  Compare speed
+                  <span class="hint">Times both providers with your saved keys — Save first</span>
+                </label>
+                <div style="text-align: right">
+                  <button type="button" class="ghost" id="btn-compare">Test &amp; compare</button>
+                  <div id="compare-result" class="hint" style="margin-top: 6px"></div>
+                </div>
               </div>
             </div>
           </section>
