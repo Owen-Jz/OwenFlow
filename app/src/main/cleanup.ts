@@ -172,6 +172,55 @@ export async function cleanup(raw: string, settings: OwenFlowSettings, extraSyst
 }
 
 /**
+ * Apply a spoken editing instruction to a target text (command channel).
+ * If target is provided, returns the edited text; if no target, fulfills
+ * the instruction directly. Returns '' on no key / any error (never throws).
+ */
+export async function runCommand(
+  instruction: string,
+  target: string,
+  settings: OwenFlowSettings
+): Promise<string> {
+  const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
+  if (!apiKey) return ''
+  const userContent = target.trim()
+    ? `INSTRUCTION: ${instruction}\n\nTEXT:\n${target}`
+    : `INSTRUCTION: ${instruction}`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Apply the spoken editing instruction to the user text. ' +
+              'If TEXT is provided return only the edited text. ' +
+              'If no TEXT is provided, fulfill the instruction directly. ' +
+              'Output ONLY the resulting text, no preamble, no labels, no commentary.'
+          },
+          { role: 'user', content: userContent }
+        ],
+        temperature: 0,
+        max_tokens: MAX_TOKENS
+      }),
+      signal: controller.signal
+    })
+    if (!res.ok) return ''
+    const data = (await res.json()) as ChatResponse
+    return data.choices?.[0]?.message?.content?.trim() || ''
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * One-line theme summary of dictation transcripts for the daily digest.
  * Reuses the active provider; returns '' on no key / any error (never throws).
  */

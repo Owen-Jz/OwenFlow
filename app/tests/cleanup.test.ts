@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { benchmarkProvider, benchmarkProviders, cleanup, summarize } from '../src/main/cleanup'
+import { benchmarkProvider, benchmarkProviders, cleanup, runCommand, summarize } from '../src/main/cleanup'
 import type { OwenFlowSettings } from '../src/shared/types'
 
 const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
@@ -353,6 +353,25 @@ describe('cleanup', () => {
     })
     it('returns empty string with no key', async () => {
       expect(await summarize('x', settings({ cleanupProvider: 'groq', groqApiKey: '' }))).toBe('')
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('runCommand', () => {
+    it('sends instruction + target text to the provider', async () => {
+      fetchMock.mockResolvedValue(okResponse('- one\n- two'))
+      const out = await runCommand('make a bullet list', 'one two', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      expect(out).toBe('- one\n- two')
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.messages[1].content).toContain('one two')
+      expect(body.messages[1].content.toLowerCase()).toContain('make a bullet list')
+    })
+    it('works with no target (generation)', async () => {
+      fetchMock.mockResolvedValue(okResponse('haiku here'))
+      expect(await runCommand('write a haiku', '', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))).toBe('haiku here')
+    })
+    it('returns empty string with no key', async () => {
+      expect(await runCommand('x', 'y', settings({ groqApiKey: '', cleanupProvider: 'groq' }))).toBe('')
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })
