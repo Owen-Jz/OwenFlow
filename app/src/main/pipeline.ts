@@ -44,6 +44,8 @@ export interface PipelineDeps {
   inject?: (text: string) => Promise<void>
   /** injector.ts — focused process name for app profiles. */
   getForegroundApp?: () => Promise<string | null>
+  /** transcribe-queue.ts — queue a failed dictation for retry. */
+  enqueueTranscription?: (wav: ArrayBuffer, settings: OwenFlowSettings, startedAt: number) => void
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -144,6 +146,11 @@ export async function stopDictation(): Promise<void> {
   } catch (err) {
     if (gen !== generation) return
     processing = false
+    if (deps.enqueueTranscription) {
+      deps.enqueueTranscription(wav, settings, startedAt)
+      failPill('⏳ Queued — will transcribe when ready', 2500)
+      return
+    }
     failPill(err instanceof Error ? err.message : 'Transcription failed')
     return
   }

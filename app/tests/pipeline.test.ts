@@ -43,6 +43,7 @@ interface MockedDeps extends PipelineDeps {
   cleanup: ReturnType<typeof vi.fn>
   inject: ReturnType<typeof vi.fn>
   getForegroundApp: ReturnType<typeof vi.fn>
+  enqueueTranscription: ReturnType<typeof vi.fn>
 }
 
 function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
@@ -65,7 +66,8 @@ function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
       return raw.replace(/\bum\s+/i, '').trim()
     }),
     inject: vi.fn(async () => void callOrder.push('inject')),
-    getForegroundApp: vi.fn(async () => null)
+    getForegroundApp: vi.fn(async () => null),
+    enqueueTranscription: vi.fn()
   }
 }
 
@@ -157,6 +159,7 @@ describe('pipeline', () => {
   it('transcription failure → pill error, nothing injected', async () => {
     const order: string[] = []
     const deps = makeDeps(baseSettings(), order)
+    delete (deps as Partial<typeof deps>).enqueueTranscription // no enqueue dep → failPill path
     deps.transcribe.mockRejectedValue(new Error('Transcriber not ready (starting)'))
     await runDictation(deps)
 
@@ -165,6 +168,15 @@ describe('pipeline', () => {
     const last = pillStates(deps).at(-1)
     expect(last?.state).toBe('error')
     expect(last?.message).toContain('Transcriber not ready')
+  })
+
+  it('transcribe failure enqueues (does not failPill) when enqueue dep present', async () => {
+    const deps = makeDeps(baseSettings(), [])
+    deps.transcribe.mockRejectedValue(new Error('Transcriber not ready (starting)'))
+    await runDictation(deps)
+    expect(deps.enqueueTranscription).toHaveBeenCalledTimes(1)
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
   })
 
   it('injector failure → history still recorded, pill shows the paste error', async () => {
