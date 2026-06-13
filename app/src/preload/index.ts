@@ -46,10 +46,16 @@ const api: OwenFlowApi = {
     onLevel: (cb: (frame: LevelFrame) => void) => subscribe<[LevelFrame]>(IPC.recorderLevel, cb)
   },
   recorder: {
-    onStart: (cb: () => void) => subscribe<[]>(IPC.recorderStart, cb),
+    onStart: (cb: (continuous: boolean) => void) => subscribe<[boolean]>(IPC.recorderStart, cb),
     onStop: (cb: () => void) => subscribe<[]>(IPC.recorderStop, cb),
     sendData: (wav: ArrayBuffer): void => {
       ipcRenderer.send(IPC.recorderData, wav)
+    },
+    sendSegment: (wav: ArrayBuffer): void => {
+      ipcRenderer.send(IPC.recorderSegment, wav)
+    },
+    sendDone: (): void => {
+      ipcRenderer.send(IPC.recorderDone)
     },
     sendError: (message: string): void => {
       ipcRenderer.send(IPC.recorderError, message)

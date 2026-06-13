@@ -8,9 +8,13 @@
  */
 
 import { LEVEL_BINS } from '../../shared/types'
+import { shouldFlush, type SegmentState } from './segmenter'
 
 const TARGET_SAMPLE_RATE = 16000
 const LEVEL_INTERVAL_MS = 50
+const SILENCE_MS = 700
+const MAX_SEGMENT_MS = 15000
+const SPEECH_LEVEL = 0.06
 
 let audioContext: AudioContext | null = null
 let mediaStream: MediaStream | null = null
@@ -20,9 +24,17 @@ let analyserNode: AnalyserNode | null = null
 let levelTimer: ReturnType<typeof setInterval> | null = null
 let chunks: Float32Array[] = []
 let recording = false
+let continuous = false
+let seg: SegmentState = { hasSpeech: false, silenceMs: 0, segmentMs: 0 }
 
-async function startCapture(): Promise<void> {
+function resetSeg(): void {
+  seg = { hasSpeech: false, silenceMs: 0, segmentMs: 0 }
+}
+
+async function startCapture(cont: boolean): Promise<void> {
   if (recording) return
+  continuous = cont
+  resetSeg()
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -69,21 +81,38 @@ async function startCapture(): Promise<void> {
   }
 }
 
+function flushSegment(): void {
+  if (chunks.length === 0) return
+  const sampleRate = audioContext?.sampleRate ?? TARGET_SAMPLE_RATE
+  const samples = concat(chunks)
+  chunks = []
+  resetSeg()
+  window.owenflow.recorder.sendSegment(encodeWav(samples, sampleRate))
+}
+
 function stopCapture(): void {
   if (!recording && chunks.length === 0) {
     // stop without start (or failed start): reply with an empty WAV so main
-    // doesn't hang waiting on recorder:data.
-    window.owenflow.recorder.sendData(encodeWav(new Float32Array(0), TARGET_SAMPLE_RATE))
+    // doesn't hang waiting on recorder:data (normal mode only).
+    if (!continuous) {
+      window.owenflow.recorder.sendData(encodeWav(new Float32Array(0), TARGET_SAMPLE_RATE))
+    } else {
+      window.owenflow.recorder.sendDone()
+    }
     return
   }
   recording = false
 
-  const sampleRate = audioContext?.sampleRate ?? TARGET_SAMPLE_RATE
-  const samples = concat(chunks)
-  chunks = []
+  if (continuous) {
+    flushSegment()
+    window.owenflow.recorder.sendDone()
+  } else {
+    const sampleRate = audioContext?.sampleRate ?? TARGET_SAMPLE_RATE
+    const samples = concat(chunks)
+    chunks = []
+    window.owenflow.recorder.sendData(encodeWav(samples, sampleRate))
+  }
   releaseResources()
-
-  window.owenflow.recorder.sendData(encodeWav(samples, sampleRate))
 }
 
 /**
@@ -108,6 +137,20 @@ function startLevelEmitter(analyser: AnalyserNode): void {
       frame[i] = Math.round((sum / (to - from) / 255) * 1000) / 1000
     }
     window.owenflow.recorder.sendLevel(frame)
+    if (continuous) {
+      const peak = Math.max(...frame)
+      const speaking = peak >= SPEECH_LEVEL
+      seg.segmentMs += LEVEL_INTERVAL_MS
+      if (speaking) {
+        seg.hasSpeech = true
+        seg.silenceMs = 0
+      } else {
+        seg.silenceMs += LEVEL_INTERVAL_MS
+      }
+      if (shouldFlush(seg, SILENCE_MS, MAX_SEGMENT_MS)) {
+        flushSegment()
+      }
+    }
   }, LEVEL_INTERVAL_MS)
 }
 
@@ -182,8 +225,8 @@ function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
   return buffer
 }
 
-window.owenflow.recorder.onStart(() => {
-  void startCapture()
+window.owenflow.recorder.onStart((cont) => {
+  void startCapture(cont)
 })
 window.owenflow.recorder.onStop(() => {
   stopCapture()

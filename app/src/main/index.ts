@@ -34,6 +34,7 @@ import {
   startCommand,
   stopCommand
 } from './command-channel'
+import { onSegment, onDone } from './continuous-channel'
 import {
   reconfigureCommandHotkey,
   startCommandHotkey,
@@ -80,8 +81,8 @@ let dictationEnabled = true
 
 const RECORDER_STOP_TIMEOUT_MS = 5000
 
-function recorderStart(): void {
-  getRecorderWindow()?.webContents.send(IPC.recorderStart)
+function recorderStart(continuous = false): void {
+  getRecorderWindow()?.webContents.send(IPC.recorderStart, continuous)
 }
 
 function recorderStop(): Promise<ArrayBuffer> {
@@ -182,6 +183,10 @@ function registerIpc(): void {
     const pill = getPillWindow()
     if (pill && !pill.isDestroyed()) pill.webContents.send(IPC.recorderLevel, frame)
   })
+
+  // Continuous dictation: segment WAVs and done signal from the recorder window.
+  ipcMain.on(IPC.recorderSegment, (_e, wav: ArrayBuffer) => onSegment(wav))
+  ipcMain.on(IPC.recorderDone, () => { void onDone() })
 
   // recorder:data / recorder:error are consumed via ipcMain.once in recorderStop().
   // A stray data event (e.g. stop after timeout) is dropped harmlessly:
