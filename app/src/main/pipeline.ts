@@ -156,6 +156,28 @@ export async function stopDictation(): Promise<void> {
     return
   }
 
+  // 2b. Voice snippet: whole-utterance trigger -> paste expansion verbatim
+  //     (skip cleanup AND dictionary AND app-profile detection; canned text must not be rewritten).
+  const snippetText = matchSnippet(raw, parseSnippets(settings.snippets))
+  if (snippetText !== null) {
+    try {
+      if (!deps.inject) throw new Error('Injector unavailable')
+      await deps.inject(snippetText)
+    } catch (err) {
+      if (gen !== generation) return
+      processing = false
+      appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+      failPill(err instanceof Error ? err.message : 'Paste failed')
+      return
+    }
+    if (gen !== generation) return
+    processing = false
+    appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+    deps.setPillState({ state: 'done' })
+    scheduleHide(1200)
+    return
+  }
+
   // App profile: detect focused app and match a formatting profile (when enabled).
   const app = settings.appProfilesEnabled ? (await deps.getForegroundApp?.()) ?? null : null
   if (gen !== generation) return
@@ -165,28 +187,6 @@ export async function stopDictation(): Promise<void> {
   const sessionMode = activeSessionMode(settings.activeSession, parseSessionTones(settings.sessionTones))
   const effMode = sessionMode ?? profileMode(profile) ?? settings.flowMode
   const effective = effMode !== settings.flowMode ? { ...settings, flowMode: effMode } : settings
-
-  // 2b. Voice snippet: whole-utterance trigger -> paste expansion verbatim
-  //     (skip cleanup AND dictionary; canned text must not be rewritten).
-  const snippetText = matchSnippet(raw, parseSnippets(settings.snippets))
-  if (snippetText !== null) {
-    try {
-      if (!deps.inject) throw new Error('Injector unavailable')
-      await deps.inject(snippetText)
-    } catch (err) {
-      if (gen !== generation) return
-      processing = false
-      appendEntry(raw, snippetText, startedAt, effective.flowMode, sessionTag(settings))
-      failPill(err instanceof Error ? err.message : 'Paste failed')
-      return
-    }
-    if (gen !== generation) return
-    processing = false
-    appendEntry(raw, snippetText, startedAt, effective.flowMode, sessionTag(settings))
-    deps.setPillState({ state: 'done' })
-    scheduleHide(1200)
-    return
-  }
 
   // 3. AI cleanup / mode rewrite — never blocks (cleanup() already falls back
   //    to raw on any error, but guard here too in case a mock/dep throws).
