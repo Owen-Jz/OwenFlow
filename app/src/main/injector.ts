@@ -44,11 +44,19 @@ const ADD_TYPE_LINE =
   'inputs[3].type=1;inputs[3].ki.wVk=0x11;inputs[3].ki.dwFlags=2;' + // Ctrl up
   'uint sent=SendInput(4u,inputs,Marshal.SizeOf(typeof(INPUT)));' +
   'if(sent!=4u){throw new Exception("SendInput failed: "+Marshal.GetLastWin32Error());}' +
-  '}}' +
+  '}' +
+  '[DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();' +
+  '[DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr hWnd,out uint pid);' +
+  'public static string GetForegroundExe(){uint pid;GetWindowThreadProcessId(GetForegroundWindow(),out pid);try{return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;}catch{return "";}}' +
+  '}' +
   "';[Console]::Out.WriteLine('READY')"
 
 const PASTE_LINE =
   "try{[OwenFlowInput]::PasteCtrlV();[Console]::Out.WriteLine('OK')}" +
+  "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
+
+const FOREGROUND_LINE =
+  "try{[Console]::Out.WriteLine('EXE ' + [OwenFlowInput]::GetForegroundExe())}" +
   "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
 
 // ─── Persistent helper management ────────────────────────────────────────────
@@ -150,6 +158,21 @@ async function sendCtrlV(): Promise<void> {
   proc.stdin.write(PASTE_LINE + '\n')
   const line = await reply
   if (line !== 'OK') throw new Error(line.startsWith('ERR') ? line : `Helper said: ${line}`)
+}
+
+/** Process name of the foreground window (no .exe), or null on any failure. */
+export async function getForegroundApp(): Promise<string | null> {
+  try {
+    await ensureHelper()
+    const proc = helper
+    if (!proc?.stdin) return null
+    const reply = nextLine(PASTE_TIMEOUT_MS)
+    proc.stdin.write(FOREGROUND_LINE + '\n')
+    const line = await reply
+    return line.startsWith('EXE ') ? (line.slice(4).trim() || null) : null
+  } catch {
+    return null
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────

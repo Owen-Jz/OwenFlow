@@ -231,6 +231,10 @@ export interface OwenFlowApi {
     /** Subscribe to sidecar status pushes ("sidecar:status"). Returns unsubscribe. */
     onStatus: (cb: (info: SidecarStatusInfo) => void) => () => void
   }
+  apps: {
+    /** Process name of the current foreground window (no .exe), or null on failure ("apps:detect"). */
+    detect: () => Promise<string | null>
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -257,5 +261,6 @@ export const IPC = {
   debugSimulate: 'debug:simulate-dictation',
   appInfo: 'app:info',
   sidecarStatusGet: 'sidecar:status:get',
-  sidecarStatus: 'sidecar:status'
+  sidecarStatus: 'sidecar:status',
+  appsDetect: 'apps:detect'
 } as const

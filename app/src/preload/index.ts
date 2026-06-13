@@ -78,6 +78,9 @@ const api: OwenFlowApi = {
     get: (): Promise<SidecarStatusInfo> => ipcRenderer.invoke(IPC.sidecarStatusGet),
     onStatus: (cb: (info: SidecarStatusInfo) => void) =>
       subscribe<[SidecarStatusInfo]>(IPC.sidecarStatus, cb)
+  },
+  apps: {
+    detect: (): Promise<string | null> => ipcRenderer.invoke(IPC.appsDetect)
   }
 }
 

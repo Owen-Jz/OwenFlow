@@ -35,7 +35,7 @@ import {
   stopSidecar,
   transcribe
 } from './sidecar'
-import { inject, killInjector, warmupInjector } from './injector'
+import { getForegroundApp, inject, killInjector, warmupInjector } from './injector'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup } from './cleanup'
 import type { OwenFlowSettings } from '../shared/types'
@@ -151,6 +151,9 @@ function registerIpc(): void {
 
   // Sidecar status pill in the settings sidebar (current snapshot on demand).
   ipcMain.handle(IPC.sidecarStatusGet, () => getSidecarStatus())
+
+  // Foreground app detection for app-aware formatting profiles.
+  ipcMain.handle(IPC.appsDetect, () => getForegroundApp())
 
   // Live waveform: forward recorder level frames straight to the pill overlay.
   // Hot path (~20 frames/s while recording) — keep it allocation-free, no logging.
