@@ -36,6 +36,7 @@ import {
   transcribe
 } from './sidecar'
 import { inject, killInjector, warmupInjector } from './injector'
+import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup } from './cleanup'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
@@ -217,7 +218,12 @@ app.whenReady().then(async () => {
     },
     onOpenSettings: () => void openSettingsWindow('settings'),
     onOpenHistory: () => void openSettingsWindow('history'),
-    onQuit: () => app.quit()
+    onQuit: () => app.quit(),
+    getSessions: () => parseSessionTones(getSettings().sessionTones).map((t) => t.label),
+    getActiveSession: () => getSettings().activeSession,
+    onSetActiveSession: (label) => {
+      setSettings({ activeSession: label })
+    }
   })
 
   // Sidecar status → tray tooltip.
@@ -279,6 +285,12 @@ app.whenReady().then(async () => {
     }
     if (next.flowMode !== prev.flowMode) {
       // Reflect Settings-UI mode changes back into the tray radio items.
+      refreshTrayMenu()
+    }
+    if (
+      next.activeSession !== prev.activeSession ||
+      next.sessionTones.join('\n') !== prev.sessionTones.join('\n')
+    ) {
       refreshTrayMenu()
     }
     if (next.model !== prev.model) {

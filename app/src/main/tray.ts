@@ -10,12 +10,17 @@ export interface TrayCallbacks {
   onOpenSettings: () => void
   onOpenHistory: () => void
   onQuit: () => void
+  /** Configured session labels (from sessionTones), for the Session submenu. */
+  getSessions: () => string[]
+  getActiveSession: () => string
+  onSetActiveSession: (label: string) => void
 }
 
 const FLOW_MODE_LABELS: Array<{ value: FlowMode; label: string }> = [
   { value: 'normal', label: 'Normal' },
   { value: 'vibe', label: 'Vibe Coding' },
-  { value: 'formal', label: 'Formal' }
+  { value: 'formal', label: 'Formal' },
+  { value: 'translate', label: 'Translate' }
 ]
 
 let tray: Tray | null = null
@@ -130,6 +135,23 @@ export function createTray(callbacks: TrayCallbacks): Tray {
           checked: callbacks.getFlowMode() === value,
           click: () => callbacks.onSetFlowMode(value)
         }))
+      },
+      {
+        label: 'Session',
+        submenu: [
+          {
+            label: 'None',
+            type: 'radio' as const,
+            checked: !callbacks.getActiveSession(),
+            click: () => callbacks.onSetActiveSession('')
+          },
+          ...callbacks.getSessions().map((label) => ({
+            label,
+            type: 'radio' as const,
+            checked: callbacks.getActiveSession() === label,
+            click: () => callbacks.onSetActiveSession(label)
+          }))
+        ]
       },
       { type: 'separator' },
       { label: 'Settings…', click: callbacks.onOpenSettings },
