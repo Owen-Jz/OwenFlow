@@ -13,6 +13,7 @@ import { applyReplacements, parseDictionary } from './dictionary'
 import { matchSnippet, parseSnippets } from './snippets'
 import { activeSessionMode, parseSessionTones } from './sessions'
 import { matchProfile, applyProfileTransforms, profilePromptRule, profileMode } from './profiles'
+import { isCommandActive } from './command-channel'
 
 // ─── Dependency contract ─────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ export function isDictationActive(): boolean {
 /** Begin a dictation (hotkey pressed / toggled on). */
 export async function startDictation(): Promise<void> {
   if (!deps || dictating || processing) return
+  if (isCommandActive()) return
   dictating = true
   generation++
   if (hideTimer) clearTimeout(hideTimer)
