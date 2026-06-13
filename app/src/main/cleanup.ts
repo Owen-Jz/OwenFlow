@@ -194,6 +194,10 @@ export async function benchmarkProvider(
     })
     const ms = Date.now() - started
     if (!res.ok) return { provider, ok: false, ms, error: `HTTP ${res.status}` }
+    // Deliberately do NOT read the body: we only need the round-trip time, and
+    // these are non-streaming JSON endpoints (server completes before sending
+    // headers). Skipping the read also avoids double body-consumption when both
+    // providers share a mocked Response in concurrent tests.
     return { provider, ok: true, ms }
   } catch (err) {
     return {

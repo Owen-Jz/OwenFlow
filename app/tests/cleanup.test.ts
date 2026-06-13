@@ -14,6 +14,7 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   minimaxGroupId: '',
   groqApiKey: 'groq-key',
   groqModel: 'llama-3.3-70b-versatile',
+  dictionary: [],
   launchOnStartup: false,
   theme: 'dark',
   ...patch
