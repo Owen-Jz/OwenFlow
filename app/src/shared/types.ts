@@ -235,6 +235,10 @@ export interface OwenFlowApi {
     /** Process name of the current foreground window (no .exe), or null on failure ("apps:detect"). */
     detect: () => Promise<string | null>
   }
+  learn: {
+    /** Diff raw vs corrected transcript and return "wrong=>right" proposal strings ("learn:propose"). */
+    propose: (raw: string, corrected: string) => Promise<string[]>
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -262,5 +266,6 @@ export const IPC = {
   appInfo: 'app:info',
   sidecarStatusGet: 'sidecar:status:get',
   sidecarStatus: 'sidecar:status',
-  appsDetect: 'apps:detect'
+  appsDetect: 'apps:detect',
+  learnPropose: 'learn:propose'
 } as const

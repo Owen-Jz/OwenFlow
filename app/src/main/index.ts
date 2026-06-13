@@ -38,6 +38,7 @@ import {
 import { getForegroundApp, inject, killInjector, warmupInjector } from './injector'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup } from './cleanup'
+import { proposeReplacements } from './learn'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -154,6 +155,11 @@ function registerIpc(): void {
 
   // Foreground app detection for app-aware formatting profiles.
   ipcMain.handle(IPC.appsDetect, () => getForegroundApp())
+
+  // Auto-learning dictionary: propose "wrong=>right" entries from a transcript correction.
+  ipcMain.handle(IPC.learnPropose, (_event, raw: string, corrected: string) =>
+    proposeReplacements(raw, corrected)
+  )
 
   // Live waveform: forward recorder level frames straight to the pill overlay.
   // Hot path (~20 frames/s while recording) — keep it allocation-free, no logging.

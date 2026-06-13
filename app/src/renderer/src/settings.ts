@@ -966,6 +966,120 @@ function renderEntry(entry: HistoryEntry): HTMLElement {
     makeCopyButton('Copy Raw', () => entry.raw)
   )
 
+  // ── Edit / Learn ───────────────────────────────────────────────────────────
+  const editBtn = document.createElement('button')
+  editBtn.className = 'ghost'
+  editBtn.textContent = 'Edit'
+  editBtn.style.marginLeft = '6px'
+
+  // Container that shows either the read-only text or the edit UI.
+  // We mutate `text` in-place rather than swapping it out of the DOM so that
+  // the entry layout stays stable.
+  editBtn.addEventListener('click', () => {
+    // Swap text div for a textarea.
+    const textarea = document.createElement('textarea')
+    textarea.value = entry.final
+    textarea.spellcheck = true
+    textarea.style.cssText =
+      'width:100%;min-height:72px;resize:vertical;font:inherit;margin-top:6px'
+    text.replaceWith(textarea)
+    textarea.focus()
+
+    // Proposals panel (hidden until Learn is clicked).
+    const proposalsWrap = document.createElement('div')
+    proposalsWrap.style.marginTop = '8px'
+
+    // Action buttons: Learn + Cancel.
+    const learnBtn = document.createElement('button')
+    learnBtn.className = 'copy'
+    learnBtn.textContent = 'Learn'
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.className = 'ghost'
+    cancelBtn.textContent = 'Cancel'
+    cancelBtn.style.marginLeft = '6px'
+
+    const editActions = document.createElement('div')
+    editActions.style.cssText = 'display:flex;align-items:center;margin-top:6px'
+    editActions.append(learnBtn, cancelBtn)
+
+    body.append(editActions, proposalsWrap)
+
+    const restoreReadOnly = (): void => {
+      textarea.replaceWith(text)
+      editActions.remove()
+      proposalsWrap.remove()
+    }
+
+    cancelBtn.addEventListener('click', restoreReadOnly)
+
+    learnBtn.addEventListener('click', async () => {
+      const corrected = textarea.value.trim()
+      learnBtn.disabled = true
+      learnBtn.textContent = 'Analyzing…'
+      proposalsWrap.replaceChildren()
+
+      let proposals: string[]
+      try {
+        proposals = await window.owenflow.learn.propose(entry.raw, corrected)
+      } catch {
+        proposals = []
+      }
+
+      learnBtn.disabled = false
+      learnBtn.textContent = 'Learn'
+
+      if (proposals.length === 0) {
+        const note = document.createElement('span')
+        note.className = 'hint'
+        note.textContent = 'No clear correction to learn.'
+        proposalsWrap.append(note)
+        return
+      }
+
+      const dismissBtn = document.createElement('button')
+      dismissBtn.className = 'ghost'
+      dismissBtn.textContent = 'Dismiss'
+      dismissBtn.style.cssText = 'margin-top:8px;font-size:11px'
+      dismissBtn.addEventListener('click', () => proposalsWrap.replaceChildren())
+
+      for (const proposal of proposals) {
+        const row = document.createElement('div')
+        row.style.cssText =
+          'display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px'
+
+        const label = document.createElement('code')
+        label.textContent = proposal
+        label.style.cssText =
+          'flex:1;background:var(--panel-2);padding:3px 7px;border-radius:6px;font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap'
+
+        const addBtn = document.createElement('button')
+        addBtn.className = 'copy'
+        addBtn.textContent = 'Add'
+        addBtn.style.cssText = 'padding:4px 10px;font-size:11px'
+
+        addBtn.addEventListener('click', async () => {
+          const settings = await window.owenflow.settings.get()
+          const lower = proposal.toLowerCase()
+          const already = settings.dictionary.some((d) => d.toLowerCase() === lower)
+          if (!already) {
+            const nextDict = [...settings.dictionary, proposal]
+            await window.owenflow.settings.set({ dictionary: nextDict })
+          }
+          addBtn.textContent = 'Added ✓'
+          addBtn.disabled = true
+        })
+
+        row.append(label, addBtn)
+        proposalsWrap.append(row)
+      }
+
+      proposalsWrap.append(dismissBtn)
+    })
+  })
+
+  copyWrap.append(editBtn)
+
   el.append(body, copyWrap)
   return el
 }

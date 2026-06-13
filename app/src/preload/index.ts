@@ -81,6 +81,10 @@ const api: OwenFlowApi = {
   },
   apps: {
     detect: (): Promise<string | null> => ipcRenderer.invoke(IPC.appsDetect)
+  },
+  learn: {
+    propose: (raw: string, corrected: string): Promise<string[]> =>
+      ipcRenderer.invoke(IPC.learnPropose, raw, corrected)
   }
 }
 
