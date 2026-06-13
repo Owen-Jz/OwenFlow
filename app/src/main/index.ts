@@ -34,7 +34,15 @@ import {
   startCommand,
   stopCommand
 } from './command-channel'
-import { onSegment, onDone } from './continuous-channel'
+import {
+  initContinuousChannel,
+  startContinuous,
+  stopContinuous,
+  cancelContinuous,
+  isContinuousActive,
+  onSegment,
+  onDone
+} from './continuous-channel'
 import {
   reconfigureCommandHotkey,
   startCommandHotkey,
@@ -264,6 +272,22 @@ app.whenReady().then(async () => {
     enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt)
   })
 
+  initContinuousChannel({
+    setPillState,
+    startRecorder: () => recorderStart(true),
+    stopRecorder: () => getRecorderWindow()?.webContents.send(IPC.recorderStop),
+    getSettings,
+    appendHistory: history.append,
+    transcribe: (wav, s) =>
+      transcribe(
+        wav,
+        parseDictionary(s.dictionary).promptWords.join(', ') || undefined,
+        s.language || undefined
+      ),
+    cleanup,
+    inject
+  })
+
   initCommandChannel({
     setPillState,
     recorderStart,
@@ -349,15 +373,19 @@ app.whenReady().then(async () => {
     mode: initial.mode,
     isEnabled: () => dictationEnabled,
     onStart: () => {
-      if (dictationEnabled) void startDictation()
+      if (isCommandActive()) return
+      if (getSettings().continuousMode) startContinuous()
+      else void startDictation()
     },
     onStop: () => {
-      if (isDictating()) void stopDictation()
+      if (isContinuousActive()) stopContinuous()
+      else void stopDictation()
     },
-    // Escape aborts an active dictation (recording or transcribing).
-    isDictationActive,
+    // Escape aborts an active dictation (recording or transcribing), including continuous.
+    isDictationActive: () => isDictationActive() || isContinuousActive(),
     onCancel: () => {
-      cancelDictation()
+      if (isContinuousActive()) cancelContinuous()
+      else cancelDictation()
     }
   })
 
@@ -367,7 +395,7 @@ app.whenReady().then(async () => {
     mode: initial.mode,
     isEnabled: () => dictationEnabled && getSettings().commandEnabled,
     onStart: () => {
-      if (!isDictationActive()) void startCommand()
+      if (!isDictationActive() && !isContinuousActive()) void startCommand()
     },
     onStop: () => void stopCommand(),
     isActive: () => isCommandActive(),
