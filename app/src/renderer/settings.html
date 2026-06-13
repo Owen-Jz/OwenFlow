@@ -1027,6 +1027,11 @@
                   <span class="mode-name">Formal</span>
                   <span class="mode-desc">client-ready professional tone</span>
                 </button>
+                <button type="button" class="mode-card" data-flow-mode="translate">
+                  <span class="mode-tag"></span>
+                  <span class="mode-name">Translate</span>
+                  <span class="mode-desc">transcribes, then translates to your target language</span>
+                </button>
               </div>
             </div>
 
@@ -1077,6 +1082,13 @@
                 <label class="title" for="f-minimax-group">MiniMax group ID</label>
                 <input type="text" id="f-minimax-group" spellcheck="false" />
               </div>
+              <div class="row" id="translate-target-row">
+                <label class="title" for="f-translate-target">
+                  Translate to
+                  <span class="hint">Target language for Translate mode (e.g. English, Spanish)</span>
+                </label>
+                <input type="text" id="f-translate-target" spellcheck="false" />
+              </div>
               <div class="row">
                 <label class="title">
                   Compare speed
@@ -1100,6 +1112,22 @@
                 <b>wrong=&gt;right</b> for replacements (e.g. <b>owen flow=&gt;OwenFlow</b>).
               </label>
               <textarea id="f-dictionary" spellcheck="false" placeholder="Hermes&#10;Qdrant&#10;owen flow=>OwenFlow"></textarea>
+            </div>
+            <div class="card">
+              <h2>Snippets</h2>
+              <label class="hint" for="f-snippets" style="margin-bottom: 8px">
+                One <b>trigger=&gt;expansion</b> per line. Say the trigger alone and the expansion is
+                pasted verbatim (skips AI cleanup). Use <b>\n</b> for line breaks.
+              </label>
+              <textarea id="f-snippets" spellcheck="false" placeholder="sign off email=>Best,\nOwen&#10;my address=>10 Main St, Lagos"></textarea>
+            </div>
+            <div class="card">
+              <h2>Sessions</h2>
+              <label class="hint" for="f-session-tones" style="margin-bottom: 8px">
+                One <b>label=&gt;mode</b> per line (mode: normal, vibe, formal, translate). Pick the
+                active session from the tray; its tone is used and dictations are tagged with the label.
+              </label>
+              <textarea id="f-session-tones" spellcheck="false" placeholder="client=>formal&#10;notes=>normal"></textarea>
             </div>
           </section>
 

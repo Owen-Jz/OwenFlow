@@ -94,6 +94,10 @@ const minimaxKeyRow = $('minimax-key-row')
 const minimaxGroupRow = $('minimax-group-row')
 const groqKeyRow = $('groq-key-row')
 const groqModelRow = $('groq-model-row')
+const fTranslateTarget = $<HTMLInputElement>('f-translate-target')
+const translateTargetRow = $('translate-target-row')
+const fSnippets = $<HTMLTextAreaElement>('f-snippets')
+const fSessionTones = $<HTMLTextAreaElement>('f-session-tones')
 /** Show only the active provider's credential rows. */
 function applyProviderVisibility(): void {
   const groq = fCleanupProvider.value === 'groq'
@@ -135,6 +139,7 @@ function selectFlowMode(mode: FlowMode): void {
   for (const card of modeCards) {
     card.classList.toggle('selected', card.dataset.flowMode === mode)
   }
+  translateTargetRow.classList.toggle('hidden', mode !== 'translate')
 }
 
 for (const card of modeCards) {
@@ -154,6 +159,9 @@ function fillForm(s: OwenFlowSettings): void {
   fGroqModel.value = s.groqModel || 'llama-3.3-70b-versatile'
   applyProviderVisibility()
   fDictionary.value = s.dictionary.join('\n')
+  fTranslateTarget.value = s.translateTarget || 'English'
+  fSnippets.value = s.snippets.join('\n')
+  fSessionTones.value = s.sessionTones.join('\n')
   fStartup.checked = s.launchOnStartup
   selectFlowMode(s.flowMode ?? 'normal')
   selectTheme(s.theme ?? 'dark')
@@ -176,6 +184,9 @@ function readForm(): Partial<OwenFlowSettings> {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean),
+    translateTarget: fTranslateTarget.value.trim() || 'English',
+    snippets: fSnippets.value.split('\n').map((l) => l.trim()).filter(Boolean),
+    sessionTones: fSessionTones.value.split('\n').map((l) => l.trim()).filter(Boolean),
     launchOnStartup: fStartup.checked,
     theme: selectedTheme
   }
