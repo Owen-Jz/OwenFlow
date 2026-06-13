@@ -1010,6 +1010,30 @@
             </div>
 
             <div class="card">
+              <h2>Command mode</h2>
+              <div class="row">
+                <label class="title" for="f-command-enabled">
+                  Enable command channel
+                  <span class="hint">A second hotkey for speak-to-act</span>
+                </label>
+                <input type="checkbox" id="f-command-enabled" />
+              </div>
+              <div class="row">
+                <label class="title" for="f-command-hotkey">
+                  Command hotkey
+                  <span class="hint">uiohook keycode, e.g. RightAlt, F14</span>
+                </label>
+                <input type="text" id="f-command-hotkey" spellcheck="false" />
+              </div>
+              <div class="row">
+                <span class="hint" id="command-help">Say "ZEAL …" or "note …" to route; anything else edits your selected text.</span>
+              </div>
+              <div class="row hidden" id="command-hotkey-warn">
+                <span class="hint" style="color: var(--danger)">⚠ Command hotkey matches the dictation hotkey — pick a different key.</span>
+              </div>
+            </div>
+
+            <div class="card">
               <h2>Daily digest</h2>
               <div class="row">
                 <label class="title" for="f-digest-enabled">

@@ -82,6 +82,18 @@ window.owenflow.ui.onShowTab((tab) => showSection(tab === 'history' ? 'history' 
 // ─── Settings form ──────────────────────────────────────────────────────────
 
 const fHotkey = $<HTMLInputElement>('f-hotkey')
+const fCommandEnabled = $<HTMLInputElement>('f-command-enabled')
+const fCommandHotkey = $<HTMLInputElement>('f-command-hotkey')
+const commandHotkeyWarn = $('command-hotkey-warn')
+function checkHotkeyClash(): void {
+  const clash =
+    fCommandHotkey.value.trim().toLowerCase() === fHotkey.value.trim().toLowerCase() &&
+    !!fCommandHotkey.value.trim()
+  commandHotkeyWarn.classList.toggle('hidden', !clash)
+}
+fCommandHotkey.addEventListener('input', checkHotkeyClash)
+fHotkey.addEventListener('input', checkHotkeyClash)
+
 const fMode = $<HTMLSelectElement>('f-mode')
 const fModel = $<HTMLSelectElement>('f-model')
 const fLanguage = $<HTMLInputElement>('f-language')
@@ -382,6 +394,9 @@ function fillForm(s: OwenFlowSettings): void {
   fAppProfilesEnabled.checked = s.appProfilesEnabled
   profilesDraft = structuredClone(s.profiles ?? [])
   renderProfiles()
+  fCommandEnabled.checked = s.commandEnabled
+  fCommandHotkey.value = s.commandHotkey
+  checkHotkeyClash()
   selectFlowMode(s.flowMode ?? 'normal')
   selectTheme(s.theme ?? 'dark')
 }
@@ -412,7 +427,9 @@ function readForm(): Partial<OwenFlowSettings> {
     digestThemes: fDigestThemes.checked,
     theme: selectedTheme,
     appProfilesEnabled: fAppProfilesEnabled.checked,
-    profiles: profilesDraft
+    profiles: profilesDraft,
+    commandEnabled: fCommandEnabled.checked,
+    commandHotkey: fCommandHotkey.value.trim() || 'RightAlt'
   }
 }
 
