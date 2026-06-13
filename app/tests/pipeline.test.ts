@@ -27,6 +27,8 @@ const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =
   translateTarget: 'English',
   sessionTones: [],
   activeSession: '',
+  appProfilesEnabled: false,
+  profiles: [],
   launchOnStartup: false,
   theme: 'dark',
   ...patch
@@ -40,6 +42,7 @@ interface MockedDeps extends PipelineDeps {
   transcribe: ReturnType<typeof vi.fn>
   cleanup: ReturnType<typeof vi.fn>
   inject: ReturnType<typeof vi.fn>
+  getForegroundApp: ReturnType<typeof vi.fn>
 }
 
 function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
@@ -61,7 +64,8 @@ function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
       callOrder.push('cleanup')
       return raw.replace(/\bum\s+/i, '').trim()
     }),
-    inject: vi.fn(async () => void callOrder.push('inject'))
+    inject: vi.fn(async () => void callOrder.push('inject')),
+    getForegroundApp: vi.fn(async () => null)
   }
 }
 
@@ -228,6 +232,35 @@ describe('pipeline', () => {
     expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal') // effective settings passed
     const entry = deps.appendHistory.mock.calls.at(-1)[0]
     expect(entry.tags).toContain('client')
+  })
+
+  it('applies a matching app profile: pins mode, records app, transforms after dictionary', async () => {
+    const deps = makeDeps(baseSettings({
+      appProfilesEnabled: true,
+      flowMode: 'normal', cleanupEnabled: false,
+      profiles: [{ match: ['Code'], flowMode: 'vibe', stripTrailingPeriod: true }]
+    }), [])
+    deps.getForegroundApp = vi.fn(async () => 'Code')
+    deps.transcribe.mockResolvedValue({ text: 'add a helper function.', durationMs: 10 })
+    deps.cleanup.mockImplementation(async (raw: string) => raw) // passthrough so we can see transforms
+    await runDictation(deps)
+    expect(deps.cleanup).toHaveBeenCalled()
+    expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('vibe')          // profile pin
+    expect(deps.inject).toHaveBeenCalledWith('add a helper function')    // trailing period stripped
+    const entry = deps.appendHistory.mock.calls.at(-1)[0]
+    expect(entry.app).toBe('Code')
+  })
+
+  it('session pick beats an app profile mode', async () => {
+    const deps = makeDeps(baseSettings({
+      appProfilesEnabled: true,
+      sessionTones: ['client=>formal'], activeSession: 'client',
+      profiles: [{ match: ['Code'], flowMode: 'vibe' }]
+    }), [])
+    deps.getForegroundApp = vi.fn(async () => 'Code')
+    deps.transcribe.mockResolvedValue({ text: 'please review the attached', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal')
   })
 })
 

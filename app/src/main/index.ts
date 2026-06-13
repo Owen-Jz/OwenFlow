@@ -206,7 +206,8 @@ app.whenReady().then(async () => {
       return transcribe(wav, promptWords.join(', ') || undefined, settings.language || undefined)
     },
     cleanup,
-    inject
+    inject,
+    getForegroundApp
   })
 
   const tray = createTray({

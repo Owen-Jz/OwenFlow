@@ -12,6 +12,7 @@ import type { HistoryEntry, OwenFlowSettings, PillState } from '../shared/types'
 import { applyReplacements, parseDictionary } from './dictionary'
 import { matchSnippet, parseSnippets } from './snippets'
 import { activeSessionMode, parseSessionTones } from './sessions'
+import { matchProfile, applyProfileTransforms, profilePromptRule, profileMode } from './profiles'
 
 // ─── Dependency contract ─────────────────────────────────────────────────────
 
@@ -38,9 +39,11 @@ export interface PipelineDeps {
   /** sidecar.ts — POST wav to the local faster-whisper server. */
   transcribe?: (wav: ArrayBuffer, settings: OwenFlowSettings) => Promise<TranscribeResult>
   /** cleanup.ts — mode-aware MiniMax pass (6s/12s timeout, raw fallback). */
-  cleanup?: (raw: string, settings: OwenFlowSettings) => Promise<string>
+  cleanup?: (raw: string, settings: OwenFlowSettings, extraSystem?: string) => Promise<string>
   /** injector.ts — clipboard-swap paste into the focused app. */
   inject?: (text: string) => Promise<void>
+  /** injector.ts — focused process name for app profiles. */
+  getForegroundApp?: () => Promise<string | null>
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -153,9 +156,15 @@ export async function stopDictation(): Promise<void> {
     return
   }
 
-  // Session tones can override the flow mode for the duration of this run.
+  // App profile: detect focused app and match a formatting profile (when enabled).
+  const app = settings.appProfilesEnabled ? (await deps.getForegroundApp?.()) ?? null : null
+  if (gen !== generation) return
+  const profile = settings.appProfilesEnabled ? matchProfile(app, settings.profiles) : null
+
+  // Session tones can override the flow mode; profile pins secondary; global is fallback.
   const sessionMode = activeSessionMode(settings.activeSession, parseSessionTones(settings.sessionTones))
-  const effective = sessionMode ? { ...settings, flowMode: sessionMode } : settings
+  const effMode = sessionMode ?? profileMode(profile) ?? settings.flowMode
+  const effective = effMode !== settings.flowMode ? { ...settings, flowMode: effMode } : settings
 
   // 2b. Voice snippet: whole-utterance trigger -> paste expansion verbatim
   //     (skip cleanup AND dictionary; canned text must not be rewritten).
@@ -187,16 +196,17 @@ export async function stopDictation(): Promise<void> {
   const wantsCleanup = effective.flowMode !== 'normal' || effective.cleanupEnabled
   if (wantsCleanup && deps.cleanup) {
     try {
-      cleaned = (await deps.cleanup(raw, effective)) || raw
+      cleaned = (await deps.cleanup(raw, effective, profile ? profilePromptRule(profile) || undefined : undefined)) || raw
     } catch {
       cleaned = raw
     }
     if (gen !== generation) return // cancelled — ignore the cleanup result
   }
 
-  // 4. Dictionary "wrong=>right" replacements.
+  // 4. Dictionary "wrong=>right" replacements, then profile-specific transforms.
   const { replacements } = parseDictionary(settings.dictionary)
-  const final = applyReplacements(cleaned, replacements)
+  const replaced = applyReplacements(cleaned, replacements)
+  const final = profile ? applyProfileTransforms(replaced, profile) : replaced
 
   // 5. Inject into the focused app.
   try {
@@ -206,14 +216,14 @@ export async function stopDictation(): Promise<void> {
     if (gen !== generation) return
     processing = false
     // Text is left on the clipboard by the injector — still record history.
-    appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings))
+    appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
     failPill(err instanceof Error ? err.message : 'Paste failed')
     return
   }
   if (gen !== generation) return
 
   processing = false
-  appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings))
+  appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
   deps.setPillState({ state: 'done' })
   scheduleHide(1200)
 }
@@ -255,17 +265,20 @@ function appendEntry(
   final: string,
   startedAt: number,
   mode: string,
-  tags: string[] = []
+  tags: string[] = [],
+  app?: string
 ): void {
   const ts = Date.now()
-  deps?.appendHistory({
+  const entry: HistoryEntry = {
     ts,
     raw,
     final,
     durationMs: ts - startedAt,
     tags,
     mode
-  })
+  }
+  if (app !== undefined) entry.app = app
+  deps?.appendHistory(entry)
 }
 
 function failPill(message: string, hideAfterMs = 3000): void {
