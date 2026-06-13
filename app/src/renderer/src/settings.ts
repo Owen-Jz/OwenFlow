@@ -95,6 +95,7 @@ fCommandHotkey.addEventListener('input', checkHotkeyClash)
 fHotkey.addEventListener('input', checkHotkeyClash)
 
 const fMode = $<HTMLSelectElement>('f-mode')
+const fContinuous = $<HTMLInputElement>('f-continuous')
 const fModel = $<HTMLSelectElement>('f-model')
 const fLanguage = $<HTMLInputElement>('f-language')
 const fCleanup = $<HTMLInputElement>('f-cleanup')
@@ -374,6 +375,7 @@ for (const card of modeCards) {
 function fillForm(s: OwenFlowSettings): void {
   fHotkey.value = s.hotkey
   fMode.value = s.mode
+  fContinuous.checked = s.continuousMode
   fModel.value = s.model
   fLanguage.value = s.language
   fCleanup.checked = s.cleanupEnabled
@@ -405,6 +407,7 @@ function readForm(): Partial<OwenFlowSettings> {
   return {
     hotkey: fHotkey.value.trim() || 'RightCtrl',
     mode: fMode.value === 'toggle' ? 'toggle' : 'hold',
+    continuousMode: fContinuous.checked,
     flowMode: selectedFlowMode,
     model: fModel.value as OwenFlowSettings['model'],
     language: fLanguage.value.trim(),
