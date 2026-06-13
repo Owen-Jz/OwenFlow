@@ -46,6 +46,8 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 - **Snippets:** say a saved trigger ("sign off email") and its expansion is pasted verbatim (skips AI cleanup) — configure in Settings → Dictionary.
 - **Translate mode:** a flow mode that transcribes any spoken language and pastes a translation into your target language (set the target in Settings).
 - **Sessions:** pick an active session from the tray (e.g. client / notes); its tone is applied automatically and each dictation is tagged with the session label.
+- **App profiles:** when enabled (Settings → Apps), OwenFlow detects the focused app and reshapes output per-app — code-friendly in editors/terminals, prose in browsers, formal in mail — with optional per-app flow mode, transforms (strip trailing period, no auto-capitalize, single line), find/replace, and a prompt rule. Off by default.
+- **Auto-learning dictionary:** edit a transcript in History and click **Learn** — OwenFlow diffs your fix against the original and proposes a `wrong=>right` entry to add, so the same mistake self-corrects next time.
 
 ## Customizing
 
