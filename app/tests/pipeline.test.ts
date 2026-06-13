@@ -23,6 +23,10 @@ const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =
   groqApiKey: 'key',
   groqModel: 'llama-3.3-70b-versatile',
   dictionary: [],
+  snippets: [],
+  translateTarget: 'English',
+  sessionTones: [],
+  activeSession: '',
   launchOnStartup: false,
   theme: 'dark',
   ...patch
@@ -193,6 +197,37 @@ describe('pipeline', () => {
     await stopDictation()
     await stopDictation() // second stop is a no-op too
     expect(deps.transcribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('snippet match short-circuits: injects expansion verbatim, no cleanup/dictionary', async () => {
+    const order: string[] = []
+    const deps = makeDeps(
+      baseSettings({ snippets: ['sign off=>Best,\\nOwen'], dictionary: ['Owen=>OWEN'] }),
+      order
+    )
+    deps.transcribe.mockResolvedValue({ text: 'sign off', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.cleanup).not.toHaveBeenCalled()
+    expect(deps.inject).toHaveBeenCalledWith('Best,\nOwen') // dictionary 'Owen=>OWEN' NOT applied
+  })
+
+  it('active session overrides flow mode and auto-tags history', async () => {
+    const order: string[] = []
+    const deps = makeDeps(
+      baseSettings({
+        flowMode: 'normal',
+        cleanupEnabled: false,
+        sessionTones: ['client=>formal'],
+        activeSession: 'client'
+      }),
+      order
+    )
+    deps.transcribe.mockResolvedValue({ text: 'please review the attached', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.cleanup).toHaveBeenCalledTimes(1) // formal runs despite cleanupEnabled:false
+    expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal') // effective settings passed
+    const entry = deps.appendHistory.mock.calls.at(-1)[0]
+    expect(entry.tags).toContain('client')
   })
 })
 

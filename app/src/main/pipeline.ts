@@ -10,6 +10,8 @@
 
 import type { HistoryEntry, OwenFlowSettings, PillState } from '../shared/types'
 import { applyReplacements, parseDictionary } from './dictionary'
+import { matchSnippet, parseSnippets } from './snippets'
+import { activeSessionMode, parseSessionTones } from './sessions'
 
 // ─── Dependency contract ─────────────────────────────────────────────────────
 
@@ -151,15 +153,40 @@ export async function stopDictation(): Promise<void> {
     return
   }
 
+  // 2b. Voice snippet: whole-utterance trigger -> paste expansion verbatim
+  //     (skip cleanup AND dictionary; canned text must not be rewritten).
+  const snippetText = matchSnippet(raw, parseSnippets(settings.snippets))
+  if (snippetText !== null) {
+    try {
+      if (!deps.inject) throw new Error('Injector unavailable')
+      await deps.inject(snippetText)
+    } catch (err) {
+      if (gen !== generation) return
+      processing = false
+      appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+      failPill(err instanceof Error ? err.message : 'Paste failed')
+      return
+    }
+    if (gen !== generation) return
+    processing = false
+    appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+    deps.setPillState({ state: 'done' })
+    scheduleHide(1200)
+    return
+  }
+
   // 3. AI cleanup / mode rewrite — never blocks (cleanup() already falls back
   //    to raw on any error, but guard here too in case a mock/dep throws).
   //    Normal mode respects the cleanupEnabled toggle; vibe/formal ALWAYS go
   //    through cleanup() (which falls back to raw when no API key is set).
+  //    Session tones can override the flow mode for the duration of this run.
+  const sessionMode = activeSessionMode(settings.activeSession, parseSessionTones(settings.sessionTones))
+  const effective = sessionMode ? { ...settings, flowMode: sessionMode } : settings
   let cleaned = raw
-  const wantsCleanup = settings.flowMode !== 'normal' || settings.cleanupEnabled
+  const wantsCleanup = effective.flowMode !== 'normal' || effective.cleanupEnabled
   if (wantsCleanup && deps.cleanup) {
     try {
-      cleaned = (await deps.cleanup(raw, settings)) || raw
+      cleaned = (await deps.cleanup(raw, effective)) || raw
     } catch {
       cleaned = raw
     }
@@ -178,14 +205,14 @@ export async function stopDictation(): Promise<void> {
     if (gen !== generation) return
     processing = false
     // Text is left on the clipboard by the injector — still record history.
-    appendEntry(raw, final, startedAt, settings.flowMode)
+    appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings))
     failPill(err instanceof Error ? err.message : 'Paste failed')
     return
   }
   if (gen !== generation) return
 
   processing = false
-  appendEntry(raw, final, startedAt, settings.flowMode)
+  appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings))
   deps.setPillState({ state: 'done' })
   scheduleHide(1200)
 }
@@ -217,14 +244,25 @@ export async function simulateDictation(): Promise<void> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function appendEntry(raw: string, final: string, startedAt: number, mode: string): void {
+function sessionTag(settings: OwenFlowSettings): string[] {
+  const label = settings.activeSession?.trim()
+  return label ? [label.toLowerCase().replace(/\s+/g, '-')] : []
+}
+
+function appendEntry(
+  raw: string,
+  final: string,
+  startedAt: number,
+  mode: string,
+  tags: string[] = []
+): void {
   const ts = Date.now()
   deps?.appendHistory({
     ts,
     raw,
     final,
     durationMs: ts - startedAt,
-    tags: [],
+    tags,
     mode
   })
 }
