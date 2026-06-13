@@ -28,6 +28,18 @@ import {
 } from './pipeline'
 import { reconfigureHotkey, startHotkey, stopHotkey } from './hotkey'
 import {
+  cancelCommand,
+  initCommandChannel,
+  isCommandActive,
+  startCommand,
+  stopCommand
+} from './command-channel'
+import {
+  reconfigureCommandHotkey,
+  startCommandHotkey,
+  stopCommandHotkey
+} from './command-hotkey'
+import {
   getSidecarStatus,
   onSidecarStatus,
   restartSidecar,
@@ -35,9 +47,9 @@ import {
   stopSidecar,
   transcribe
 } from './sidecar'
-import { getForegroundApp, inject, killInjector, warmupInjector } from './injector'
+import { copySelection, getForegroundApp, inject, killInjector, warmupInjector } from './injector'
 import { parseSessionTones } from './sessions'
-import { benchmarkProviders, cleanup, summarize } from './cleanup'
+import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { proposeReplacements } from './learn'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
@@ -247,6 +259,24 @@ app.whenReady().then(async () => {
     enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt)
   })
 
+  initCommandChannel({
+    setPillState,
+    recorderStart,
+    recorderStop,
+    getSettings,
+    appendHistory: history.append,
+    transcribe: (wav, s) =>
+      transcribe(
+        wav,
+        parseDictionary(s.dictionary).promptWords.join(', ') || undefined,
+        s.language || undefined
+      ),
+    copySelection,
+    runCommand,
+    inject,
+    notify: (title, body) => notify(title, body, () => {})
+  })
+
   const tray = createTray({
     isEnabled: () => dictationEnabled,
     onToggleEnabled: (enabled) => {
@@ -326,6 +356,21 @@ app.whenReady().then(async () => {
     }
   })
 
+  // Second hotkey for the command channel.
+  startCommandHotkey({
+    hotkey: initial.commandHotkey,
+    mode: initial.mode,
+    isEnabled: () => dictationEnabled && getSettings().commandEnabled,
+    onStart: () => {
+      if (!isDictationActive()) void startCommand()
+    },
+    onStop: () => void stopCommand(),
+    isActive: () => isCommandActive(),
+    onCancel: () => {
+      cancelCommand()
+    }
+  })
+
   applyLaunchOnStartup(initial.launchOnStartup)
 
   // First launch (no settings file yet): show Settings so the config is visible.
@@ -339,6 +384,13 @@ app.whenReady().then(async () => {
     }
     if (next.hotkey !== prev.hotkey || next.mode !== prev.mode) {
       reconfigureHotkey(next.hotkey, next.mode)
+    }
+    if (
+      next.commandHotkey !== prev.commandHotkey ||
+      next.commandEnabled !== prev.commandEnabled ||
+      next.mode !== prev.mode
+    ) {
+      reconfigureCommandHotkey(next.commandHotkey, next.mode)
     }
     if (next.flowMode !== prev.flowMode) {
       // Reflect Settings-UI mode changes back into the tray radio items.
@@ -369,6 +421,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   stopHotkey() // the native hook keeps the process alive if left running
+  stopCommandHotkey()
   stopSidecar()
   killInjector()
 })
