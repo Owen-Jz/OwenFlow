@@ -62,7 +62,7 @@ const BENCHMARK_TEXT =
 
 // Terse prompts on purpose: a reasoning model (MiniMax) measurably thinks (and
 // waits) less with tight instructions; Groq is unaffected.
-const SYSTEM_PROMPTS: Record<FlowMode, string> = {
+const SYSTEM_PROMPTS: Record<Exclude<FlowMode, 'translate'>, string> = {
   normal: [
     'Rewrite this raw speech-to-text dictation transcript:',
     'remove filler words (um, uh, like, you know, sort of) and false starts,',
@@ -87,6 +87,19 @@ const SYSTEM_PROMPTS: Record<FlowMode, string> = {
     'Keep the meaning exactly — do NOT add promises, facts or details that were not said.',
     'Output ONLY the rewritten text — no quotes, labels or commentary.'
   ].join(' ')
+}
+
+/** The system prompt for a mode; translate is dynamic (depends on the target). */
+function systemPromptFor(mode: FlowMode, settings: OwenFlowSettings): string {
+  if (mode === 'translate') {
+    const target = settings.translateTarget?.trim() || 'English'
+    return [
+      `Translate the following dictation into ${target}.`,
+      'Output ONLY the translation — no quotes, labels, or commentary.',
+      'Preserve meaning and tone; do not add or omit content.'
+    ].join(' ')
+  }
+  return SYSTEM_PROMPTS[mode]
 }
 
 interface ChatResponse {
@@ -132,7 +145,7 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPTS[mode] },
+          { role: 'system', content: systemPromptFor(mode, settings) },
           { role: 'user', content: raw }
         ],
         temperature: 0,

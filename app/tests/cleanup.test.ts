@@ -15,6 +15,10 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   groqApiKey: 'groq-key',
   groqModel: 'llama-3.3-70b-versatile',
   dictionary: [],
+  snippets: [],
+  translateTarget: 'English',
+  sessionTones: [],
+  activeSession: '',
   launchOnStartup: false,
   theme: 'dark',
   ...patch
@@ -301,6 +305,27 @@ describe('cleanup', () => {
       const results = await benchmarkProviders(settings({ groqApiKey: 'gk', minimaxApiKey: 'mk' }))
       expect(results.map((r) => r.provider).sort()).toEqual(['groq', 'minimax'])
       expect(results.every((r) => r.ok)).toBe(true)
+    })
+  })
+
+  describe('translate mode', () => {
+    it('builds a translate prompt with the configured target and routes to the provider', async () => {
+      fetchMock.mockResolvedValue(okResponse('Hola mundo'))
+      await cleanup('hello world', settings({ flowMode: 'translate', translateTarget: 'Spanish', cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      expect(body.messages[0].content).toContain('Spanish')
+      expect(body.messages[0].content.toLowerCase()).toContain('translate')
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
+    })
+    it('defaults the target to English when translateTarget is empty', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup('hola', settings({ flowMode: 'translate', translateTarget: '', cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content).toContain('English')
+    })
+    it('translates even a short transcript (no <=3-word skip)', async () => {
+      fetchMock.mockResolvedValue(okResponse('Hola'))
+      await cleanup('hello', settings({ flowMode: 'translate', cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      expect(fetchMock).toHaveBeenCalledOnce()
     })
   })
 })
