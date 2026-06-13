@@ -40,7 +40,7 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 ## Usage
 
 - **Hold Right Ctrl** (default) and speak; release to transcribe and paste. Configurable hotkey + a press-to-toggle mode in Settings.
-- **Cleanup (optional):** add your MiniMax API key in Settings to strip filler words and fix punctuation. If it's off, slow, or fails, the raw transcript is pasted — dictation never blocks on AI.
+- **Cleanup (optional):** add your MiniMax API key in Settings to strip filler words and fix punctuation. If it's off, slow, or fails, the raw transcript is pasted — dictation never blocks on AI. Refinement defaults to **Groq** (`llama-3.3-70b-versatile`, sub-second); add a Groq API key in Settings → Modes. MiniMax stays selectable as a slower max-polish option, and a **Test & compare** button times both providers head-to-head.
 - **Dictionary:** one entry per line in Settings. Plain words bias recognition (e.g. `Cresio, Fluxboard, ZEAL`); `wrong=>right` entries are find/replace fixes.
 - **History:** tray → History for recent transcripts with copy buttons.
 
@@ -50,7 +50,7 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 |---|---|
 | Whisper model size / language | Settings UI, or `OWENFLOW_MODEL` env for the sidecar |
 | Pill look & feel | `app/src/renderer/pill/` |
-| Cleanup prompt / provider | `app/src/main/cleanup.ts` |
+| Refinement provider (Groq default / MiniMax) | Settings → Modes, or `app/src/main/cleanup.ts` |
 | Injection method | `app/src/main/injector.ts` |
 | Hotkey behavior | `app/src/main/hotkey.ts` |
 
