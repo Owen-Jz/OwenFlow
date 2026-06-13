@@ -51,6 +51,7 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 - **Never lose a dictation:** if the Whisper sidecar is cold or busy when you finish speaking, the audio is queued and retried in the background; the recovered transcript lands in History (tagged `recovered`) with a notification you can click to copy — it's never pasted late into the wrong app.
 - **Daily digest:** a once-a-day tray notification summarizing what you dictated (count, words, time saved vs typing), with an optional AI theme summary. Configure the time/toggles in Settings → General, or trigger it anytime from the tray's **Today's digest**.
 - **Command mode (speak-to-act):** enable a second hotkey in Settings → General. Select some text, hold the command hotkey and speak an instruction ("make this a bullet list", "rewrite formally") — it edits your selection via the LLM and pastes the result; with nothing selected it generates from the instruction. Prefix with "ZEAL …" or "note …" to route to those channels (coming in a later slice). Off by default.
+- **Continuous / draft mode:** toggle it on in Settings → General, then just hold the dictation hotkey and keep talking — OwenFlow splits on your natural pauses and streams each segment in (transcribed + cleaned) while you continue, so long-form drafts flow in paragraph by paragraph. Release to finish; the whole session lands as one History entry. Off by default.
 
 ## Customizing
 

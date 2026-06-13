@@ -82,6 +82,10 @@ export async function onDone(): Promise<void> {
 export function cancelContinuous(): void {
   if (!deps || !active) return
   generation++
+  // ORDER MATTERS: clear `active` BEFORE stopRecorder(). stopRecorder makes the
+  // recorder flush + emit recorder:done, which calls onDone() — onDone's first
+  // guard is `!active`, so it must already be false here or a cancelled session
+  // would still write a history entry.
   active = false
   deps.stopRecorder()
   deps.setPillState({ state: 'idle' })
