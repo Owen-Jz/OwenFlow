@@ -73,3 +73,12 @@ describe('config batch-A settings', () => {
     expect(schema.flowMode.enum).toEqual(['normal', 'vibe', 'formal', 'translate'])
   })
 })
+
+describe('config app profiles', () => {
+  it('defaults appProfilesEnabled false and seeds preset profiles', () => {
+    expect(DEFAULT_SETTINGS.appProfilesEnabled).toBe(false)
+    expect(Array.isArray(DEFAULT_SETTINGS.profiles)).toBe(true)
+    expect(DEFAULT_SETTINGS.profiles.length).toBeGreaterThan(0)
+    expect(DEFAULT_SETTINGS.profiles[0].match).toContain('Code')
+  })
+})

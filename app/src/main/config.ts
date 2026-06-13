@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import type { OwenFlowSettings } from '../shared/types'
+import { DEFAULT_PROFILES } from './profiles'
 
 export const DEFAULT_SETTINGS: OwenFlowSettings = {
   hotkey: 'RightCtrl',
@@ -21,6 +22,8 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   translateTarget: 'English',
   sessionTones: [],
   activeSession: '',
+  appProfilesEnabled: false,
+  profiles: DEFAULT_PROFILES,
   launchOnStartup: false,
   theme: 'dark'
 }
@@ -58,6 +61,8 @@ const store = new Store<OwenFlowSettings>({
     translateTarget: { type: 'string', default: 'English' },
     sessionTones: { type: 'array', items: { type: 'string' }, default: [] },
     activeSession: { type: 'string', default: '' },
+    appProfilesEnabled: { type: 'boolean', default: false },
+    profiles: { type: 'array', default: [] },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }

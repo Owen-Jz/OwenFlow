@@ -37,6 +37,24 @@ export interface ProviderTiming {
  */
 export type ThemeMode = 'dark' | 'light' | 'system'
 
+/** A per-app formatting profile, matched on focused process name. */
+export interface AppProfile {
+  /** Process names (no .exe), case-insensitive, e.g. ["Code","Cursor"]. */
+  match: string[]
+  /** Pin a flow mode while this app is focused; omitted = inherit. */
+  flowMode?: FlowMode
+  /** Strip a trailing sentence period from the output. */
+  stripTrailingPeriod?: boolean
+  /** Lowercase the first letter (don't auto-capitalize). */
+  noAutoCapitalize?: boolean
+  /** Collapse internal newlines to single spaces. */
+  singleLine?: boolean
+  /** Per-app "wrong=>right" replacement lines. */
+  replacements?: string[]
+  /** Extra instruction appended to the cleanup system prompt. */
+  promptRule?: string
+}
+
 export interface OwenFlowSettings {
   /** uiohook keycode name, e.g. "RightCtrl" */
   hotkey: string
@@ -69,6 +87,10 @@ export interface OwenFlowSettings {
   sessionTones: string[]
   /** Active session label ('' = none); maps to a tone via sessionTones and auto-tags history. */
   activeSession: string
+  /** Master switch for app-aware formatting profiles. */
+  appProfilesEnabled: boolean
+  /** Per-app formatting profiles (matched on focused process name). */
+  profiles: AppProfile[]
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode
