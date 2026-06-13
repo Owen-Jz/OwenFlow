@@ -48,11 +48,25 @@ const ADD_TYPE_LINE =
   '[DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();' +
   '[DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr hWnd,out uint pid);' +
   'public static string GetForegroundExe(){uint pid;GetWindowThreadProcessId(GetForegroundWindow(),out pid);try{return System.Diagnostics.Process.GetProcessById((int)pid).ProcessName;}catch{return "";}}' +
+  'public static void CopyCtrlC(){' +
+  'INPUT[] inputs=new INPUT[4];' +
+  'inputs[0].type=1;inputs[0].ki.wVk=0x11;' +
+  'inputs[1].type=1;inputs[1].ki.wVk=0x43;' +
+  'inputs[2].type=1;inputs[2].ki.wVk=0x43;inputs[2].ki.dwFlags=2;' +
+  'inputs[3].type=1;inputs[3].ki.wVk=0x11;inputs[3].ki.dwFlags=2;' +
+  'uint sent=SendInput(4u,inputs,Marshal.SizeOf(typeof(INPUT)));' +
+  'if(sent!=4u){throw new Exception("SendInput failed: "+Marshal.GetLastWin32Error());}' +
+  '}' +
   '}' +
   "';[Console]::Out.WriteLine('READY')"
 
 const PASTE_LINE =
   "try{[OwenFlowInput]::PasteCtrlV();[Console]::Out.WriteLine('OK')}" +
+  "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
+
+const COPY_SETTLE_MS = 140
+const COPY_LINE =
+  "try{[OwenFlowInput]::CopyCtrlC();[Console]::Out.WriteLine('OK')}" +
   "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
 
 const FOREGROUND_LINE =
@@ -172,6 +186,23 @@ export async function getForegroundApp(): Promise<string | null> {
     return line.startsWith('EXE ') ? (line.slice(4).trim() || null) : null
   } catch {
     return null
+  }
+}
+
+/** Copy the current selection (Ctrl+C) and return the clipboard text. '' on failure. */
+export async function copySelection(): Promise<string> {
+  try {
+    await ensureHelper()
+    const proc = helper
+    if (!proc?.stdin) return ''
+    const reply = nextLine(PASTE_TIMEOUT_MS)
+    proc.stdin.write(COPY_LINE + '\n')
+    const line = await reply
+    if (line !== 'OK') return ''
+    await delay(COPY_SETTLE_MS)
+    return clipboard.readText()
+  } catch {
+    return ''
   }
 }
 
