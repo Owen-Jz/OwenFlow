@@ -118,7 +118,7 @@ function resolveProvider(
   return { url: provider.url, apiKey, model }
 }
 
-export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<string> {
+export async function cleanup(raw: string, settings: OwenFlowSettings, extraSystem?: string): Promise<string> {
   const mode: FlowMode = settings.flowMode ?? 'normal'
 
   // Normal mode is an opt-in cleanup pass; vibe/formal REQUIRE the API and
@@ -145,7 +145,7 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: systemPromptFor(mode, settings) },
+          { role: 'system', content: extraSystem ? `${systemPromptFor(mode, settings)}\n${extraSystem}` : systemPromptFor(mode, settings) },
           { role: 'user', content: raw }
         ],
         temperature: 0,

@@ -308,6 +308,21 @@ describe('cleanup', () => {
     })
   })
 
+  describe('extraSystem argument', () => {
+    it('appends extraSystem to the system prompt when provided', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup('um hello there world', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }), 'TERMINAL RULE')
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content).toContain('TERMINAL RULE')
+    })
+
+    it('omitting extraSystem leaves the system prompt unchanged', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup('um hello there world', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      const content = JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content
+      expect(content).not.toContain('TERMINAL RULE')
+    })
+  })
+
   describe('translate mode', () => {
     it('builds a translate prompt with the configured target and routes to the provider', async () => {
       fetchMock.mockResolvedValue(okResponse('Hola mundo'))
