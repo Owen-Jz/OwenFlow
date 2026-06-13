@@ -37,3 +37,25 @@ describe('config theme setting', () => {
     expect(schema.theme.default).toBe('dark')
   })
 })
+
+describe('config cleanup provider', () => {
+  it('defaults cleanupProvider to groq', () => {
+    expect(DEFAULT_SETTINGS.cleanupProvider).toBe('groq')
+    expect(getSettings().cleanupProvider).toBe('groq')
+  })
+
+  it('defaults groqModel to llama-3.3-70b-versatile', () => {
+    expect(DEFAULT_SETTINGS.groqModel).toBe('llama-3.3-70b-versatile')
+    expect(DEFAULT_SETTINGS.groqApiKey).toBe('')
+  })
+
+  it('declares cleanupProvider schema as groq | minimax with groq default', () => {
+    const schema = captured.options?.schema as Record<
+      string,
+      { enum?: string[]; default?: string }
+    >
+    expect(schema.cleanupProvider.enum).toEqual(['groq', 'minimax'])
+    expect(schema.cleanupProvider.default).toBe('groq')
+    expect(schema.groqModel.default).toBe('llama-3.3-70b-versatile')
+  })
+})

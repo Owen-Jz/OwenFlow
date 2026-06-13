@@ -17,6 +17,9 @@ export type FlowMode = 'normal' | 'vibe' | 'formal'
 
 export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo'
 
+/** Which LLM backend runs the refinement/cleanup pass. */
+export type CleanupProvider = 'groq' | 'minimax'
+
 /**
  * Settings-window theme. 'system' follows the OS prefers-color-scheme,
  * including live changes. The pill overlay is always dark glass.
@@ -33,8 +36,14 @@ export interface OwenFlowSettings {
   /** empty string = auto-detect */
   language: string
   cleanupEnabled: boolean
+  /** Which LLM provider runs the cleanup/refinement pass. */
+  cleanupProvider: CleanupProvider
   minimaxApiKey: string
   minimaxGroupId: string
+  /** Groq API key (used when cleanupProvider === 'groq'). Stored locally only. */
+  groqApiKey: string
+  /** Groq model id, e.g. llama-3.3-70b-versatile or llama-3.1-8b-instant. */
+  groqModel: string
   /**
    * Dictionary entries, one per item.
    * Plain words bias whisper recognition (initial_prompt);

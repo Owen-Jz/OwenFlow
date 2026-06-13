@@ -11,8 +11,11 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   model: 'small',
   language: '',
   cleanupEnabled: false,
+  cleanupProvider: 'groq',
   minimaxApiKey: '',
   minimaxGroupId: '',
+  groqApiKey: '',
+  groqModel: 'llama-3.3-70b-versatile',
   dictionary: [],
   launchOnStartup: false,
   theme: 'dark'
@@ -41,8 +44,11 @@ const store = new Store<OwenFlowSettings>({
     },
     language: { type: 'string', default: '' },
     cleanupEnabled: { type: 'boolean', default: false },
+    cleanupProvider: { type: 'string', enum: ['groq', 'minimax'], default: 'groq' },
     minimaxApiKey: { type: 'string', default: '' },
     minimaxGroupId: { type: 'string', default: '' },
+    groqApiKey: { type: 'string', default: '' },
+    groqModel: { type: 'string', default: 'llama-3.3-70b-versatile' },
     dictionary: { type: 'array', items: { type: 'string' }, default: [] },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
