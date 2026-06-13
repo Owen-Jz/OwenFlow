@@ -126,6 +126,9 @@ $('btn-compare').addEventListener('click', async () => {
 
 const fDictionary = $<HTMLTextAreaElement>('f-dictionary')
 const fStartup = $<HTMLInputElement>('f-startup')
+const fDigestEnabled = $<HTMLInputElement>('f-digest-enabled')
+const fDigestHour = $<HTMLInputElement>('f-digest-hour')
+const fDigestThemes = $<HTMLInputElement>('f-digest-themes')
 const saveStatus = $('save-status')
 
 // ─── App profiles ────────────────────────────────────────────────────────────
@@ -373,6 +376,9 @@ function fillForm(s: OwenFlowSettings): void {
   fSnippets.value = s.snippets.join('\n')
   fSessionTones.value = s.sessionTones.join('\n')
   fStartup.checked = s.launchOnStartup
+  fDigestEnabled.checked = s.digestEnabled
+  fDigestHour.value = String(s.digestHour ?? 18)
+  fDigestThemes.checked = s.digestThemes
   fAppProfilesEnabled.checked = s.appProfilesEnabled
   profilesDraft = structuredClone(s.profiles ?? [])
   renderProfiles()
@@ -401,6 +407,9 @@ function readForm(): Partial<OwenFlowSettings> {
     snippets: fSnippets.value.split('\n').map((l) => l.trim()).filter(Boolean),
     sessionTones: fSessionTones.value.split('\n').map((l) => l.trim()).filter(Boolean),
     launchOnStartup: fStartup.checked,
+    digestEnabled: fDigestEnabled.checked,
+    digestHour: Math.min(23, Math.max(0, Number(fDigestHour.value) || 18)),
+    digestThemes: fDigestThemes.checked,
     theme: selectedTheme,
     appProfilesEnabled: fAppProfilesEnabled.checked,
     profiles: profilesDraft
