@@ -47,6 +47,15 @@ Groq is fast; keep a generous ceiling (e.g. 15s) but it will typically resolve <
 - Short normal-mode dictations (≤3 words) still skip the LLM.
 - `cleanup()` still **never throws / never blocks** — any error returns raw.
 
+### Speed comparison ("Test & compare")
+A button in Settings that times **both** providers head-to-head so the user can choose with real numbers from their own key + network.
+
+- `cleanup.ts` exports `benchmarkProvider(provider, settings)` — forces a given provider (regardless of `cleanupProvider`), sends a fixed sample sentence with the normal-mode prompt, and returns `{ provider, ok, ms, error? }`. Never throws; missing key → `{ ok: false, error: 'no API key' }`, non-200/timeout → `{ ok: false, error }`.
+- `benchmarkProviders(settings)` runs both concurrently (`Promise.all`).
+- Exposed to the renderer via a new IPC channel `cleanup:benchmark` → `window.owenflow.cleanup.benchmark()`.
+- Uses the **saved** settings (keys), so the UI hint tells the user to Save first.
+- Result rendered like `groq: 0.7s  ·  minimax: 4.2s` (or the per-provider error / "no API key").
+
 ## 4. Settings UI
 
 In the existing settings form (near the current MiniMax fields):
@@ -54,10 +63,12 @@ In the existing settings form (near the current MiniMax fields):
 - When Groq selected: show `groqApiKey` (masked) + `groqModel` dropdown.
 - When MiniMax selected: show existing MiniMax key + group fields.
 - Keep the existing "AI refinement (cleanup)" on/off toggle as-is.
+- **Test & compare** button + a result line that shows each provider's round-trip time (or error). Hint: "Times both providers with your saved keys — Save first."
 
 ## 5. Testing
 
 - `cleanup.test.ts` (extend): provider resolution (groq vs minimax → correct url/model/key/header); Groq success parse; off / missing-key → raw; non-200 → raw; timeout → raw; vibe/formal route to the selected provider.
+- `benchmarkProvider`/`benchmarkProviders`: ok timing with a key; forces the requested provider regardless of `cleanupProvider`; `ok:false` + "no API key" when key missing (no fetch); `ok:false` on non-200 (never throws); both providers timed.
 - No regression to the normal/vibe/formal prompt content.
 
 ## 6. Security
