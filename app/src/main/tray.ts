@@ -9,6 +9,7 @@ export interface TrayCallbacks {
   onSetFlowMode: (mode: FlowMode) => void
   onOpenSettings: () => void
   onOpenHistory: () => void
+  onShowDigest: () => void
   onQuit: () => void
   /** Configured session labels (from sessionTones), for the Session submenu. */
   getSessions: () => string[]
@@ -156,6 +157,7 @@ export function createTray(callbacks: TrayCallbacks): Tray {
       { type: 'separator' },
       { label: 'Settings…', click: callbacks.onOpenSettings },
       { label: 'History…', click: callbacks.onOpenHistory },
+      { label: "Today's digest", click: callbacks.onShowDigest },
       { type: 'separator' },
       { label: 'Quit OwenFlow', click: callbacks.onQuit }
     ])

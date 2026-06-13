@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Notification, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 
 // The pill overlay is click-through, so it can never produce a "user gesture" —
@@ -37,8 +37,11 @@ import {
 } from './sidecar'
 import { getForegroundApp, inject, killInjector, warmupInjector } from './injector'
 import { parseSessionTones } from './sessions'
-import { benchmarkProviders, cleanup } from './cleanup'
+import { benchmarkProviders, cleanup, summarize } from './cleanup'
 import { proposeReplacements } from './learn'
+import { initTranscribeQueue, enqueue } from './transcribe-queue'
+import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
+import { applyReplacements } from './dictionary'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -201,6 +204,33 @@ app.whenReady().then(async () => {
 
   await Promise.all([createRecorderWindow(), createPillWindow()])
 
+  function notify(title: string, body: string, onClick: () => void): void {
+    try {
+      const n = new Notification({ title, body })
+      n.on('click', onClick)
+      n.show()
+    } catch (err) {
+      console.warn('[notify] failed:', err instanceof Error ? err.message : err)
+    }
+  }
+
+  initTranscribeQueue({
+    transcribe: (wav, s) =>
+      transcribe(wav, parseDictionary(s.dictionary).promptWords.join(', ') || undefined, s.language || undefined),
+    deliver: (text, item) => {
+      void (async () => {
+        let final = text
+        try {
+          const cleaned = (await cleanup(text, item.settings)) || text
+          final = applyReplacements(cleaned, parseDictionary(item.settings.dictionary).replacements)
+        } catch { /* keep raw */ }
+        history.append({ ts: Date.now(), raw: text, final, durationMs: 0, tags: ['recovered'], mode: item.settings.flowMode })
+        notify('OwenFlow — recovered dictation', final.slice(0, 140), () => clipboard.writeText(final))
+      })()
+    },
+    onDrop: () => notify('OwenFlow — dictation lost', 'Could not transcribe a queued dictation (sidecar unavailable).', () => {})
+  })
+
   initPipeline({
     setPillState,
     recorderStart,
@@ -213,7 +243,8 @@ app.whenReady().then(async () => {
     },
     cleanup,
     inject,
-    getForegroundApp
+    getForegroundApp,
+    enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt)
   })
 
   const tray = createTray({
@@ -228,12 +259,28 @@ app.whenReady().then(async () => {
     },
     onOpenSettings: () => void openSettingsWindow('settings'),
     onOpenHistory: () => void openSettingsWindow('history'),
+    onShowDigest: () => {
+      const d = digestNow()
+      if (d) {
+        notify(d.title, d.body, () => void openSettingsWindow('history'))
+      } else {
+        notify('OwenFlow — digest', 'No dictations yet today.', () => void openSettingsWindow('history'))
+      }
+    },
     onQuit: () => app.quit(),
     getSessions: () => parseSessionTones(getSettings().sessionTones).map((t) => t.label),
     getActiveSession: () => getSettings().activeSession,
     onSetActiveSession: (label) => {
       setSettings({ activeSession: label })
     }
+  })
+
+  initDigestScheduler({
+    getSettings,
+    listHistory: () => history.list(Number.MAX_SAFE_INTEGER),
+    summarize,
+    notify,
+    openHistory: () => void openSettingsWindow('history')
   })
 
   // Sidecar status → tray tooltip.
@@ -307,6 +354,13 @@ app.whenReady().then(async () => {
       void restartSidecar(next.model).catch((err) => {
         console.error('[main] sidecar restart failed:', err instanceof Error ? err.message : err)
       })
+    }
+    if (
+      next.digestEnabled !== prev.digestEnabled ||
+      next.digestHour !== prev.digestHour ||
+      next.digestThemes !== prev.digestThemes
+    ) {
+      rescheduleDigest()
     }
   })
 })
