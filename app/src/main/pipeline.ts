@@ -153,6 +153,10 @@ export async function stopDictation(): Promise<void> {
     return
   }
 
+  // Session tones can override the flow mode for the duration of this run.
+  const sessionMode = activeSessionMode(settings.activeSession, parseSessionTones(settings.sessionTones))
+  const effective = sessionMode ? { ...settings, flowMode: sessionMode } : settings
+
   // 2b. Voice snippet: whole-utterance trigger -> paste expansion verbatim
   //     (skip cleanup AND dictionary; canned text must not be rewritten).
   const snippetText = matchSnippet(raw, parseSnippets(settings.snippets))
@@ -163,13 +167,13 @@ export async function stopDictation(): Promise<void> {
     } catch (err) {
       if (gen !== generation) return
       processing = false
-      appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+      appendEntry(raw, snippetText, startedAt, effective.flowMode, sessionTag(settings))
       failPill(err instanceof Error ? err.message : 'Paste failed')
       return
     }
     if (gen !== generation) return
     processing = false
-    appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+    appendEntry(raw, snippetText, startedAt, effective.flowMode, sessionTag(settings))
     deps.setPillState({ state: 'done' })
     scheduleHide(1200)
     return
@@ -179,9 +183,6 @@ export async function stopDictation(): Promise<void> {
   //    to raw on any error, but guard here too in case a mock/dep throws).
   //    Normal mode respects the cleanupEnabled toggle; vibe/formal ALWAYS go
   //    through cleanup() (which falls back to raw when no API key is set).
-  //    Session tones can override the flow mode for the duration of this run.
-  const sessionMode = activeSessionMode(settings.activeSession, parseSessionTones(settings.sessionTones))
-  const effective = sessionMode ? { ...settings, flowMode: sessionMode } : settings
   let cleaned = raw
   const wantsCleanup = effective.flowMode !== 'normal' || effective.cleanupEnabled
   if (wantsCleanup && deps.cleanup) {
