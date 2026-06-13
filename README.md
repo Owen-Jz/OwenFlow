@@ -43,6 +43,9 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 - **Cleanup (optional):** add your MiniMax API key in Settings to strip filler words and fix punctuation. If it's off, slow, or fails, the raw transcript is pasted — dictation never blocks on AI. Refinement defaults to **Groq** (`llama-3.3-70b-versatile`, sub-second); add a Groq API key in Settings → Modes. MiniMax stays selectable as a slower max-polish option, and a **Test & compare** button times both providers head-to-head.
 - **Dictionary:** one entry per line in Settings. Plain words bias recognition (e.g. `Cresio, Fluxboard, ZEAL`); `wrong=>right` entries are find/replace fixes.
 - **History:** tray → History for recent transcripts with copy buttons.
+- **Snippets:** say a saved trigger ("sign off email") and its expansion is pasted verbatim (skips AI cleanup) — configure in Settings → Dictionary.
+- **Translate mode:** a flow mode that transcribes any spoken language and pastes a translation into your target language (set the target in Settings).
+- **Sessions:** pick an active session from the tray (e.g. client / notes); its tone is applied automatically and each dictation is tagged with the session label.
 
 ## Customizing
 
