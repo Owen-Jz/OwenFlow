@@ -20,6 +20,16 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | '
 /** Which LLM backend runs the refinement/cleanup pass. */
 export type CleanupProvider = 'groq' | 'minimax'
 
+/** Result of timing one provider's refinement round-trip ("cleanup:benchmark"). */
+export interface ProviderTiming {
+  provider: CleanupProvider
+  ok: boolean
+  /** Round-trip milliseconds (0 when skipped for a missing key). */
+  ms: number
+  /** Present when ok is false: 'no API key', 'HTTP 429', an abort/network message, etc. */
+  error?: string
+}
+
 /**
  * Settings-window theme. 'system' follows the OS prefers-color-scheme,
  * including live changes. The pill overlay is always dark glass.
