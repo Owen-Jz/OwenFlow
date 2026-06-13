@@ -911,6 +911,10 @@
           </svg>
           Dictionary
         </button>
+        <button class="nav-item" data-section="apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Apps
+        </button>
         <button class="nav-item" data-section="history">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="9" />
@@ -1129,6 +1133,33 @@
               </label>
               <textarea id="f-session-tones" spellcheck="false" placeholder="client=>formal&#10;notes=>normal"></textarea>
             </div>
+          </section>
+
+          <!-- ─── Apps ─── -->
+          <section class="page" id="page-apps">
+            <div class="page-title">App Profiles</div>
+            <div class="card">
+              <h2>App-aware formatting</h2>
+              <div class="row">
+                <label class="title" for="f-app-profiles-enabled">
+                  Enable app profiles
+                  <span class="hint">Reshape output based on the focused app (off = same everywhere)</span>
+                </label>
+                <input type="checkbox" id="f-app-profiles-enabled" />
+              </div>
+              <div class="row">
+                <label class="title">
+                  Detect current app
+                  <span class="hint">Shows the focused app's process name for the Match field</span>
+                </label>
+                <div style="text-align:right">
+                  <button type="button" class="ghost" id="btn-detect-app">Detect</button>
+                  <span id="detect-result" class="hint" style="margin-left:8px"></span>
+                </div>
+              </div>
+            </div>
+            <div id="profiles-list"></div>
+            <button type="button" class="ghost" id="btn-add-profile">+ Add profile</button>
           </section>
 
           <!-- ─── History ─── -->

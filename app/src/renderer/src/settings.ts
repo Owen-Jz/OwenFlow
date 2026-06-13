@@ -12,6 +12,7 @@ import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/700.css'
 
 import type {
+  AppProfile,
   FlowMode,
   FolderCount,
   HistoryEntry,
@@ -58,10 +59,10 @@ systemDark.addEventListener('change', () => {
 
 // ─── Sidebar navigation ─────────────────────────────────────────────────────
 
-type SectionName = 'general' | 'modes' | 'dictionary' | 'history' | 'about'
+type SectionName = 'general' | 'modes' | 'dictionary' | 'apps' | 'history' | 'about'
 
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item'))
-const pages: SectionName[] = ['general', 'modes', 'dictionary', 'history', 'about']
+const pages: SectionName[] = ['general', 'modes', 'dictionary', 'apps', 'history', 'about']
 
 function showSection(name: SectionName): void {
   for (const item of navItems) item.classList.toggle('active', item.dataset.section === name)
@@ -127,6 +128,215 @@ const fDictionary = $<HTMLTextAreaElement>('f-dictionary')
 const fStartup = $<HTMLInputElement>('f-startup')
 const saveStatus = $('save-status')
 
+// ─── App profiles ────────────────────────────────────────────────────────────
+
+const fAppProfilesEnabled = $<HTMLInputElement>('f-app-profiles-enabled')
+const profilesList = $('profiles-list')
+
+let profilesDraft: AppProfile[] = []
+
+function renderProfiles(): void {
+  profilesList.replaceChildren()
+  profilesDraft.forEach((profile, idx) => {
+    const card = document.createElement('div')
+    card.className = 'card'
+    card.style.marginBottom = '16px'
+
+    // Card header with index label and delete button
+    const header = document.createElement('div')
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px'
+    const h2 = document.createElement('h2')
+    h2.style.marginBottom = '0'
+    h2.textContent = `Profile ${idx + 1}`
+    const delBtn = document.createElement('button')
+    delBtn.type = 'button'
+    delBtn.className = 'danger'
+    delBtn.textContent = 'Delete'
+    delBtn.style.fontSize = '12px'
+    delBtn.style.padding = '5px 12px'
+    delBtn.addEventListener('click', () => {
+      profilesDraft.splice(idx, 1)
+      renderProfiles()
+    })
+    header.append(h2, delBtn)
+    card.append(header)
+
+    // Match row
+    const matchRow = document.createElement('div')
+    matchRow.className = 'row'
+    const matchLabel = document.createElement('label')
+    matchLabel.className = 'title'
+    matchLabel.textContent = 'Match'
+    const matchHint = document.createElement('span')
+    matchHint.className = 'hint'
+    matchHint.textContent = 'Comma-separated process names (no .exe), e.g. Code, Cursor'
+    matchLabel.append(matchHint)
+    const matchInput = document.createElement('input')
+    matchInput.type = 'text'
+    matchInput.spellcheck = false
+    matchInput.placeholder = 'Code, Cursor'
+    matchInput.value = profile.match.join(', ')
+    matchInput.addEventListener('input', () => {
+      profile.match = matchInput.value.split(',').map((s) => s.trim()).filter(Boolean)
+    })
+    matchRow.append(matchLabel, matchInput)
+    card.append(matchRow)
+
+    // Flow mode row
+    const modeRow = document.createElement('div')
+    modeRow.className = 'row'
+    const modeLabel = document.createElement('label')
+    modeLabel.className = 'title'
+    modeLabel.textContent = 'Flow mode'
+    const modeHint = document.createElement('span')
+    modeHint.className = 'hint'
+    modeHint.textContent = 'Override flow mode for this app; inherit = use global setting'
+    modeLabel.append(modeHint)
+    const modeSelect = document.createElement('select')
+    ;[['', 'inherit (global)'], ['normal', 'normal'], ['vibe', 'vibe'], ['formal', 'formal'], ['translate', 'translate']].forEach(([val, label]) => {
+      const opt = document.createElement('option')
+      opt.value = val
+      opt.textContent = label
+      modeSelect.append(opt)
+    })
+    modeSelect.value = profile.flowMode ?? ''
+    modeSelect.addEventListener('change', () => {
+      profile.flowMode = (modeSelect.value as FlowMode) || undefined
+    })
+    modeRow.append(modeLabel, modeSelect)
+    card.append(modeRow)
+
+    // Strip trailing period checkbox row
+    const stripRow = document.createElement('div')
+    stripRow.className = 'row'
+    const stripLabel = document.createElement('label')
+    stripLabel.className = 'title'
+    stripLabel.setAttribute('for', `p${idx}-strip`)
+    stripLabel.textContent = 'Strip trailing period'
+    const stripHint = document.createElement('span')
+    stripHint.className = 'hint'
+    stripHint.textContent = 'Remove the final "." from output (useful in code/chat apps)'
+    stripLabel.append(stripHint)
+    const stripCheck = document.createElement('input')
+    stripCheck.type = 'checkbox'
+    stripCheck.id = `p${idx}-strip`
+    stripCheck.checked = profile.stripTrailingPeriod ?? false
+    stripCheck.addEventListener('change', () => {
+      profile.stripTrailingPeriod = stripCheck.checked || undefined
+    })
+    stripRow.append(stripLabel, stripCheck)
+    card.append(stripRow)
+
+    // No auto-capitalize checkbox row
+    const capRow = document.createElement('div')
+    capRow.className = 'row'
+    const capLabel = document.createElement('label')
+    capLabel.className = 'title'
+    capLabel.setAttribute('for', `p${idx}-cap`)
+    capLabel.textContent = 'No auto-capitalize'
+    const capHint = document.createElement('span')
+    capHint.className = 'hint'
+    capHint.textContent = 'Keep the first letter lowercase (e.g. for code identifiers)'
+    capLabel.append(capHint)
+    const capCheck = document.createElement('input')
+    capCheck.type = 'checkbox'
+    capCheck.id = `p${idx}-cap`
+    capCheck.checked = profile.noAutoCapitalize ?? false
+    capCheck.addEventListener('change', () => {
+      profile.noAutoCapitalize = capCheck.checked || undefined
+    })
+    capRow.append(capLabel, capCheck)
+    card.append(capRow)
+
+    // Single line checkbox row
+    const slRow = document.createElement('div')
+    slRow.className = 'row'
+    const slLabel = document.createElement('label')
+    slLabel.className = 'title'
+    slLabel.setAttribute('for', `p${idx}-sl`)
+    slLabel.textContent = 'Single line'
+    const slHint = document.createElement('span')
+    slHint.className = 'hint'
+    slHint.textContent = 'Collapse newlines to spaces (useful for single-line inputs)'
+    slLabel.append(slHint)
+    const slCheck = document.createElement('input')
+    slCheck.type = 'checkbox'
+    slCheck.id = `p${idx}-sl`
+    slCheck.checked = profile.singleLine ?? false
+    slCheck.addEventListener('change', () => {
+      profile.singleLine = slCheck.checked || undefined
+    })
+    slRow.append(slLabel, slCheck)
+    card.append(slRow)
+
+    // Prompt rule row
+    const prRow = document.createElement('div')
+    prRow.className = 'row'
+    const prLabel = document.createElement('label')
+    prLabel.className = 'title'
+    prLabel.setAttribute('for', `p${idx}-pr`)
+    prLabel.textContent = 'Prompt rule'
+    const prHint = document.createElement('span')
+    prHint.className = 'hint'
+    prHint.textContent = 'Extra instruction appended to the cleanup system prompt'
+    prLabel.append(prHint)
+    const prInput = document.createElement('input')
+    prInput.type = 'text'
+    prInput.id = `p${idx}-pr`
+    prInput.spellcheck = false
+    prInput.placeholder = 'e.g. Use imperative mood'
+    prInput.value = profile.promptRule ?? ''
+    prInput.addEventListener('input', () => {
+      profile.promptRule = prInput.value.trim() || undefined
+    })
+    prRow.append(prLabel, prInput)
+    card.append(prRow)
+
+    // Replacements row (textarea)
+    const repRow = document.createElement('div')
+    repRow.className = 'row'
+    repRow.style.alignItems = 'flex-start'
+    const repLabel = document.createElement('label')
+    repLabel.className = 'title'
+    repLabel.setAttribute('for', `p${idx}-rep`)
+    repLabel.textContent = 'Replacements'
+    const repHint = document.createElement('span')
+    repHint.className = 'hint'
+    repHint.textContent = 'One wrong=>right per line, applied after global dictionary'
+    repLabel.append(repHint)
+    const repArea = document.createElement('textarea')
+    repArea.id = `p${idx}-rep`
+    repArea.spellcheck = false
+    repArea.placeholder = 'fn=>function\nconst=>let'
+    repArea.style.minHeight = '72px'
+    repArea.value = (profile.replacements ?? []).join('\n')
+    repArea.addEventListener('input', () => {
+      const lines = repArea.value.split('\n').map((l) => l.trim()).filter(Boolean)
+      profile.replacements = lines.length ? lines : undefined
+    })
+    repRow.append(repLabel, repArea)
+    card.append(repRow)
+
+    profilesList.append(card)
+  })
+}
+
+$('btn-add-profile').addEventListener('click', () => {
+  profilesDraft.push({ match: [] })
+  renderProfiles()
+})
+
+$('btn-detect-app').addEventListener('click', async () => {
+  const detectResult = $('detect-result')
+  detectResult.textContent = 'detecting…'
+  try {
+    const name = await window.owenflow.apps.detect()
+    detectResult.textContent = name ? name : 'no app detected'
+  } catch {
+    detectResult.textContent = 'detection failed'
+  }
+})
+
 // ─── Mode cards ─────────────────────────────────────────────────────────────
 
 const modeCards = Array.from(
@@ -163,6 +373,9 @@ function fillForm(s: OwenFlowSettings): void {
   fSnippets.value = s.snippets.join('\n')
   fSessionTones.value = s.sessionTones.join('\n')
   fStartup.checked = s.launchOnStartup
+  fAppProfilesEnabled.checked = s.appProfilesEnabled
+  profilesDraft = structuredClone(s.profiles ?? [])
+  renderProfiles()
   selectFlowMode(s.flowMode ?? 'normal')
   selectTheme(s.theme ?? 'dark')
 }
@@ -188,7 +401,9 @@ function readForm(): Partial<OwenFlowSettings> {
     snippets: fSnippets.value.split('\n').map((l) => l.trim()).filter(Boolean),
     sessionTones: fSessionTones.value.split('\n').map((l) => l.trim()).filter(Boolean),
     launchOnStartup: fStartup.checked,
-    theme: selectedTheme
+    theme: selectedTheme,
+    appProfilesEnabled: fAppProfilesEnabled.checked,
+    profiles: profilesDraft
   }
 }
 
