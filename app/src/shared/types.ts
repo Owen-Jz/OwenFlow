@@ -101,6 +101,8 @@ export interface OwenFlowSettings {
   commandEnabled: boolean
   /** uiohook keycode name for the command hotkey. */
   commandHotkey: string
+  /** Long-form draft mode: stream segments on pauses. */
+  continuousMode: boolean
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode
@@ -202,11 +204,15 @@ export interface OwenFlowApi {
   }
   recorder: {
     /** Main asks the hidden recorder window to start capturing ("recorder:start"). */
-    onStart: (cb: () => void) => () => void
+    onStart: (cb: (continuous: boolean) => void) => () => void
     /** Main asks the recorder to stop ("recorder:stop"). */
     onStop: (cb: () => void) => () => void
     /** Recorder replies with a 16kHz mono WAV ("recorder:data"). */
     sendData: (wav: ArrayBuffer) => void
+    /** Send a mid-session audio segment for continuous dictation ("recorder:segment"). */
+    sendSegment: (wav: ArrayBuffer) => void
+    /** Signal that all segments have been flushed ("recorder:done"). */
+    sendDone: () => void
     /** Report a capture error to main (mic denied etc.). */
     sendError: (message: string) => void
     /** Emit a live audio level frame while recording ("recorder:level"). */
@@ -256,6 +262,8 @@ export const IPC = {
   recorderStart: 'recorder:start',
   recorderStop: 'recorder:stop',
   recorderData: 'recorder:data',
+  recorderSegment: 'recorder:segment',
+  recorderDone: 'recorder:done',
   recorderError: 'recorder:error',
   recorderLevel: 'recorder:level',
   pillState: 'pill:state',

@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   digestThemes: false,
   commandEnabled: false,
   commandHotkey: 'RightAlt',
+  continuousMode: false,
   launchOnStartup: false,
   theme: 'dark'
 }
@@ -73,6 +74,7 @@ const store = new Store<OwenFlowSettings>({
     digestThemes: { type: 'boolean', default: false },
     commandEnabled: { type: 'boolean', default: false },
     commandHotkey: { type: 'string', default: 'RightAlt' },
+    continuousMode: { type: 'boolean', default: false },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }

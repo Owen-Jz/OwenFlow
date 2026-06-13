@@ -97,3 +97,9 @@ describe('config command channel', () => {
     expect(DEFAULT_SETTINGS.commandHotkey).toBe('RightAlt')
   })
 })
+
+describe('config continuous mode', () => {
+  it('defaults continuousMode to false', () => {
+    expect(DEFAULT_SETTINGS.continuousMode).toBe(false)
+  })
+})
