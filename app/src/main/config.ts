@@ -17,6 +17,10 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   groqApiKey: '',
   groqModel: 'llama-3.3-70b-versatile',
   dictionary: [],
+  snippets: [],
+  translateTarget: 'English',
+  sessionTones: [],
+  activeSession: '',
   launchOnStartup: false,
   theme: 'dark'
 }
@@ -36,7 +40,7 @@ const store = new Store<OwenFlowSettings>({
   schema: {
     hotkey: { type: 'string', default: 'RightCtrl' },
     mode: { type: 'string', enum: ['hold', 'toggle'], default: 'hold' },
-    flowMode: { type: 'string', enum: ['normal', 'vibe', 'formal'], default: 'normal' },
+    flowMode: { type: 'string', enum: ['normal', 'vibe', 'formal', 'translate'], default: 'normal' },
     model: {
       type: 'string',
       enum: ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'],
@@ -50,6 +54,10 @@ const store = new Store<OwenFlowSettings>({
     groqApiKey: { type: 'string', default: '' },
     groqModel: { type: 'string', default: 'llama-3.3-70b-versatile' },
     dictionary: { type: 'array', items: { type: 'string' }, default: [] },
+    snippets: { type: 'array', items: { type: 'string' }, default: [] },
+    translateTarget: { type: 'string', default: 'English' },
+    sessionTones: { type: 'array', items: { type: 'string' }, default: [] },
+    activeSession: { type: 'string', default: '' },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }

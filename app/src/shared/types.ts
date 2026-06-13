@@ -9,11 +9,12 @@ export type DictationMode = 'hold' | 'toggle'
 
 /**
  * Output style mode:
- *  - normal: types exactly what you say (optional AI cleanup pass)
- *  - vibe:   restructures rambly speech into a refined AI coding prompt
- *  - formal: client-ready professional tone
+ *  - normal:    types exactly what you say (optional AI cleanup pass)
+ *  - vibe:      restructures rambly speech into a refined AI coding prompt
+ *  - formal:    client-ready professional tone
+ *  - translate: transcribes, then translates to a target language
  */
-export type FlowMode = 'normal' | 'vibe' | 'formal'
+export type FlowMode = 'normal' | 'vibe' | 'formal' | 'translate'
 
 export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | 'large-v3-turbo'
 
@@ -60,6 +61,14 @@ export interface OwenFlowSettings {
    * "wrong=>right" entries are post-transcription replacements.
    */
   dictionary: string[]
+  /** Voice snippets: "trigger => expansion" per line; matched whole-utterance, pasted verbatim. */
+  snippets: string[]
+  /** Target language for the Translate flow mode (e.g. "English", "Spanish"). */
+  translateTarget: string
+  /** Session tones: "label => mode" per line (mode in normal|vibe|formal|translate). */
+  sessionTones: string[]
+  /** Active session label ('' = none); maps to a tone via sessionTones and auto-tags history. */
+  activeSession: string
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode

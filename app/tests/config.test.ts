@@ -59,3 +59,17 @@ describe('config cleanup provider', () => {
     expect(schema.groqModel.default).toBe('llama-3.3-70b-versatile')
   })
 })
+
+describe('config batch-A settings', () => {
+  it('declares new defaults', () => {
+    expect(DEFAULT_SETTINGS.snippets).toEqual([])
+    expect(DEFAULT_SETTINGS.translateTarget).toBe('English')
+    expect(DEFAULT_SETTINGS.sessionTones).toEqual([])
+    expect(DEFAULT_SETTINGS.activeSession).toBe('')
+  })
+
+  it('flowMode schema includes translate', () => {
+    const schema = captured.options?.schema as Record<string, { enum?: string[] }>
+    expect(schema.flowMode.enum).toEqual(['normal', 'vibe', 'formal', 'translate'])
+  })
+})
