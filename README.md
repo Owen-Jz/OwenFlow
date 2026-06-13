@@ -48,6 +48,8 @@ The app spawns the sidecar automatically on launch. Tray icon → Settings to co
 - **Sessions:** pick an active session from the tray (e.g. client / notes); its tone is applied automatically and each dictation is tagged with the session label.
 - **App profiles:** when enabled (Settings → Apps), OwenFlow detects the focused app and reshapes output per-app — code-friendly in editors/terminals, prose in browsers, formal in mail — with optional per-app flow mode, transforms (strip trailing period, no auto-capitalize, single line), find/replace, and a prompt rule. Off by default.
 - **Auto-learning dictionary:** edit a transcript in History and click **Learn** — OwenFlow diffs your fix against the original and proposes a `wrong=>right` entry to add, so the same mistake self-corrects next time.
+- **Never lose a dictation:** if the Whisper sidecar is cold or busy when you finish speaking, the audio is queued and retried in the background; the recovered transcript lands in History (tagged `recovered`) with a notification you can click to copy — it's never pasted late into the wrong app.
+- **Daily digest:** a once-a-day tray notification summarizing what you dictated (count, words, time saved vs typing), with an optional AI theme summary. Configure the time/toggles in Settings → General, or trigger it anytime from the tray's **Today's digest**.
 
 ## Customizing
 
