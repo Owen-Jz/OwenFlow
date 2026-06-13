@@ -97,6 +97,10 @@ export interface OwenFlowSettings {
   digestHour: number
   /** Include an LLM theme summary in the digest (opt-in; uses your provider). */
   digestThemes: boolean
+  /** Enable the speak-to-act command channel (second hotkey). */
+  commandEnabled: boolean
+  /** uiohook keycode name for the command hotkey. */
+  commandHotkey: string
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode

@@ -90,3 +90,10 @@ describe('config digest', () => {
     expect(DEFAULT_SETTINGS.digestThemes).toBe(false)
   })
 })
+
+describe('config command channel', () => {
+  it('defaults commandEnabled false and commandHotkey RightAlt', () => {
+    expect(DEFAULT_SETTINGS.commandEnabled).toBe(false)
+    expect(DEFAULT_SETTINGS.commandHotkey).toBe('RightAlt')
+  })
+})
