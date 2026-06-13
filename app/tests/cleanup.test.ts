@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup } from '../src/main/cleanup'
+import { benchmarkProvider, benchmarkProviders, cleanup } from '../src/main/cleanup'
 import type { OwenFlowSettings } from '../src/shared/types'
 
 const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
@@ -9,9 +9,11 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   model: 'small',
   language: '',
   cleanupEnabled: true,
+  cleanupProvider: 'minimax',
   minimaxApiKey: 'test-key',
   minimaxGroupId: '',
-  dictionary: [],
+  groqApiKey: 'groq-key',
+  groqModel: 'llama-3.3-70b-versatile',
   launchOnStartup: false,
   theme: 'dark',
   ...patch
@@ -144,7 +146,9 @@ describe('cleanup', () => {
 
   it('returns raw without fetching when no API key (all modes)', async () => {
     for (const flowMode of ['normal', 'vibe', 'formal'] as const) {
-      await expect(cleanup(RAW, settings({ flowMode, minimaxApiKey: '' }))).resolves.toBe(RAW)
+      await expect(
+        cleanup(RAW, settings({ flowMode, minimaxApiKey: '', groqApiKey: '' }))
+      ).resolves.toBe(RAW)
     }
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -216,5 +220,86 @@ describe('cleanup', () => {
     await vi.advanceTimersByTimeAsync(3_100)
     await expect(result).resolves.toBe(RAW)
     expect(settled).toBe(true)
+  })
+
+  describe('provider selection', () => {
+    it('groq provider hits the Groq endpoint with the groq key and model', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      await cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(init.headers.Authorization).toBe('Bearer gk')
+      expect(JSON.parse(init.body).model).toBe('llama-3.3-70b-versatile')
+    })
+
+    it('groq uses the configured groqModel when set', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      await cleanup(RAW, settings({ cleanupProvider: 'groq', groqModel: 'llama-3.1-8b-instant' }))
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('llama-3.1-8b-instant')
+    })
+
+    it('groq falls back to the default model when groqModel is empty', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      await cleanup(RAW, settings({ cleanupProvider: 'groq', groqModel: '' }))
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('llama-3.3-70b-versatile')
+    })
+
+    it('returns raw without fetching when groq is selected but groqApiKey is empty', async () => {
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: '' }))
+      ).resolves.toBe(RAW)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('minimax provider still hits the MiniMax endpoint with the minimax key', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      await cleanup(RAW, settings({ cleanupProvider: 'minimax' }))
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+      expect(init.headers.Authorization).toBe('Bearer test-key')
+      expect(JSON.parse(init.body).model).toBe('MiniMax-M2.5')
+    })
+  })
+
+  describe('benchmarkProvider', () => {
+    it('returns ok timing for a provider with a key', async () => {
+      fetchMock.mockResolvedValue(okResponse('done'))
+      const r = await benchmarkProvider('groq', settings({ groqApiKey: 'gk' }))
+      expect(r.provider).toBe('groq')
+      expect(r.ok).toBe(true)
+      expect(typeof r.ms).toBe('number')
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(init.headers.Authorization).toBe('Bearer gk')
+    })
+
+    it('forces the requested provider regardless of cleanupProvider setting', async () => {
+      fetchMock.mockResolvedValue(okResponse('done'))
+      await benchmarkProvider('minimax', settings({ cleanupProvider: 'groq' }))
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+    })
+
+    it('returns ok:false with "no API key" when the provider key is missing (no fetch)', async () => {
+      const r = await benchmarkProvider('groq', settings({ groqApiKey: '' }))
+      expect(r.ok).toBe(false)
+      expect(r.error).toBe('no API key')
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('returns ok:false on non-200 (never throws)', async () => {
+      fetchMock.mockResolvedValue(new Response('nope', { status: 429 }))
+      const r = await benchmarkProvider('groq', settings({ groqApiKey: 'gk' }))
+      expect(r.ok).toBe(false)
+      expect(r.error).toContain('429')
+    })
+  })
+
+  describe('benchmarkProviders', () => {
+    it('times both providers', async () => {
+      fetchMock.mockResolvedValue(okResponse('done'))
+      const results = await benchmarkProviders(settings({ groqApiKey: 'gk', minimaxApiKey: 'mk' }))
+      expect(results.map((r) => r.provider).sort()).toEqual(['groq', 'minimax'])
+      expect(results.every((r) => r.ok)).toBe(true)
+    })
   })
 })

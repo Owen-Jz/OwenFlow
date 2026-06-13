@@ -1,35 +1,51 @@
 /**
- * MiniMax post-processing pass, driven by the flow mode:
- *  - normal: cleanup + restructuring (fillers out, well-formed sentences,
- *            faithful to what was said) — respects cleanupEnabled, and skips
- *            the LLM entirely for very short transcripts (≤3 words)
+ * LLM post-processing pass, driven by the flow mode and the selected provider.
+ *
+ * Provider-agnostic: MiniMax (chatcompletion_v2) and Groq (OpenAI-compatible
+ * /openai/v1/chat/completions) are both OpenAI-shaped — `messages` in,
+ * `choices[0].message.content` out — so a single request/parse path serves
+ * both. Groq's llama-3.3-70b-versatile is the default (a non-reasoning model
+ * that returns sub-second); MiniMax-M2.5 (a reasoning model whose thinking
+ * can't be disabled, ~2.5–8s) is kept as the slow "max-polish" fallback.
+ *
+ *  - normal: cleanup + restructuring — respects cleanupEnabled, and skips the
+ *            LLM entirely for very short transcripts (≤3 words)
  *  - vibe:   restructures rambly speech into a refined AI coding prompt — ALWAYS
- *            runs when an API key is set (ignores cleanupEnabled)
+ *            runs when a key for the active provider is set
  *  - formal: client-ready professional rewrite — same gating as vibe
  *
- * Latency notes (measured live 2026-06-12 against MiniMax-M2.5, a reasoning
- * model — thinking can NOT be disabled on M2.x): terse prompts + temperature 0
- * + a max_tokens cap cut p50 from ~4.7s/7.0s (short/long) to ~2.5s/3.9s, with
- * the worst observed run at 8.0s. Legacy fast models (MiniMax-Text-01, M1,
- * abab6.5s) are unavailable on this key; M2 / M2.5-highspeed were no faster.
- *
- * Contract: NEVER throws, never blocks the pipeline — any error, timeout
- * (15s, all modes — measured p95 ~6s + headroom), non-200, missing key or
- * empty reply returns the raw transcript unchanged.
+ * Contract: NEVER throws, never blocks the pipeline — any error, timeout (15s),
+ * non-200, missing key or empty reply returns the raw transcript unchanged.
  */
 
-import type { FlowMode, OwenFlowSettings } from '../shared/types'
+import type {
+  CleanupProvider,
+  FlowMode,
+  OwenFlowSettings,
+  ProviderTiming
+} from '../shared/types'
 
-const MINIMAX_URL = 'https://api.minimax.io/v1/text/chatcompletion_v2'
-const MODEL = 'MiniMax-M2.5'
-
-/** Measured p95 ≈ 6s on long dictations; generous headroom so vibe/formal
- *  reliably finish instead of silently falling back to the raw transcript. */
-const TIMEOUT_MS: Record<FlowMode, number> = {
-  normal: 15_000,
-  vibe: 15_000,
-  formal: 15_000
+interface ProviderConfig {
+  url: string
+  defaultModel: string
 }
+
+/** OpenAI-shaped chat providers: identical request/response shape, different
+ *  endpoint + model. Groq (non-reasoning, sub-second) is the default; MiniMax
+ *  (reasoning, 2.5–8s) is the max-polish fallback. */
+const PROVIDERS: Record<CleanupProvider, ProviderConfig> = {
+  groq: {
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    defaultModel: 'llama-3.3-70b-versatile'
+  },
+  minimax: {
+    url: 'https://api.minimax.io/v1/text/chatcompletion_v2',
+    defaultModel: 'MiniMax-M2.5'
+  }
+}
+
+/** Generous ceiling; Groq usually resolves <1s, MiniMax p95 ≈ 6s. */
+const TIMEOUT_MS = 15_000
 
 /** Caps runaway reasoning/output — reasoning tokens count toward this. */
 const MAX_TOKENS = 1_500
@@ -40,8 +56,12 @@ const MAX_TOKENS = 1_500
  */
 const SKIP_WORD_COUNT = 3
 
-// Terse prompts on purpose: M2.5 is a reasoning model and measurably thinks
-// (and waits) less with tight instructions.
+/** Sample sentence used by the Settings "Test & compare" speed benchmark. */
+const BENCHMARK_TEXT =
+  'um so this is a quick test of the refinement speed you know to compare the two providers'
+
+// Terse prompts on purpose: a reasoning model (MiniMax) measurably thinks (and
+// waits) less with tight instructions; Groq is unaffected.
 const SYSTEM_PROMPTS: Record<FlowMode, string> = {
   normal: [
     'Rewrite this raw speech-to-text dictation transcript:',
@@ -69,8 +89,20 @@ const SYSTEM_PROMPTS: Record<FlowMode, string> = {
   ].join(' ')
 }
 
-interface MiniMaxResponse {
+interface ChatResponse {
   choices?: Array<{ message?: { content?: string } }>
+}
+
+/** Resolve a provider's endpoint, key and model from settings. */
+function resolveProvider(
+  settings: OwenFlowSettings,
+  name: CleanupProvider
+): { url: string; apiKey: string; model: string } {
+  const provider = PROVIDERS[name]
+  const apiKey = name === 'groq' ? settings.groqApiKey : settings.minimaxApiKey
+  const model =
+    name === 'groq' ? settings.groqModel || provider.defaultModel : provider.defaultModel
+  return { url: provider.url, apiKey, model }
 }
 
 export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<string> {
@@ -85,19 +117,20 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
   // nothing to restructure — skip the LLM round-trip for an instant paste.
   if (mode === 'normal' && raw.trim().split(/\s+/).length <= SKIP_WORD_COUNT) return raw
 
-  if (!settings.minimaxApiKey) return raw
+  const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
+  if (!apiKey) return raw
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS[mode])
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
-    const res = await fetch(MINIMAX_URL, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${settings.minimaxApiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPTS[mode] },
           { role: 'user', content: raw }
@@ -108,10 +141,10 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
       signal: controller.signal
     })
     if (!res.ok) {
-      console.warn(`[cleanup] MiniMax HTTP ${res.status} (${mode}) — using raw transcript`)
+      console.warn(`[cleanup] ${model} HTTP ${res.status} (${mode}) — using raw transcript`)
       return raw
     }
-    const data = (await res.json()) as MiniMaxResponse
+    const data = (await res.json()) as ChatResponse
     const text = data.choices?.[0]?.message?.content?.trim()
     return text || raw
   } catch (err) {
@@ -123,4 +156,58 @@ export async function cleanup(raw: string, settings: OwenFlowSettings): Promise<
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Time one provider's refinement round-trip against a fixed sample sentence.
+ * Forces `provider` regardless of settings.cleanupProvider so the Settings
+ * "Test & compare" button can race both. Never throws: a missing key returns
+ * { ok: false, error: 'no API key' }; non-200/timeout returns { ok: false }.
+ */
+export async function benchmarkProvider(
+  provider: CleanupProvider,
+  settings: OwenFlowSettings
+): Promise<ProviderTiming> {
+  const { url, apiKey, model } = resolveProvider(settings, provider)
+  if (!apiKey) return { provider, ok: false, ms: 0, error: 'no API key' }
+
+  const started = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPTS.normal },
+          { role: 'user', content: BENCHMARK_TEXT }
+        ],
+        temperature: 0,
+        max_tokens: MAX_TOKENS
+      }),
+      signal: controller.signal
+    })
+    const ms = Date.now() - started
+    if (!res.ok) return { provider, ok: false, ms, error: `HTTP ${res.status}` }
+    return { provider, ok: true, ms }
+  } catch (err) {
+    return {
+      provider,
+      ok: false,
+      ms: Date.now() - started,
+      error: err instanceof Error ? err.message : 'failed'
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Benchmark both providers concurrently for the Settings "Test & compare" button. */
+export async function benchmarkProviders(settings: OwenFlowSettings): Promise<ProviderTiming[]> {
+  return Promise.all([benchmarkProvider('groq', settings), benchmarkProvider('minimax', settings)])
 }
