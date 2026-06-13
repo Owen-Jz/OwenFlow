@@ -172,6 +172,40 @@ export async function cleanup(raw: string, settings: OwenFlowSettings, extraSyst
 }
 
 /**
+ * One-line theme summary of dictation transcripts for the daily digest.
+ * Reuses the active provider; returns '' on no key / any error (never throws).
+ */
+export async function summarize(text: string, settings: OwenFlowSettings): Promise<string> {
+  const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
+  if (!apiKey || !text.trim()) return ''
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'Summarize the recurring themes of these dictation transcripts in one short line. Output only the summary.' },
+          { role: 'user', content: text }
+        ],
+        temperature: 0,
+        max_tokens: 200
+      }),
+      signal: controller.signal
+    })
+    if (!res.ok) return ''
+    const data = (await res.json()) as ChatResponse
+    return data.choices?.[0]?.message?.content?.trim() || ''
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Time one provider's refinement round-trip against a fixed sample sentence.
  * Forces `provider` regardless of settings.cleanupProvider so the Settings
  * "Test & compare" button can race both. Never throws: a missing key returns

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { benchmarkProvider, benchmarkProviders, cleanup } from '../src/main/cleanup'
+import { benchmarkProvider, benchmarkProviders, cleanup, summarize } from '../src/main/cleanup'
 import type { OwenFlowSettings } from '../src/shared/types'
 
 const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
@@ -341,6 +341,19 @@ describe('cleanup', () => {
       fetchMock.mockResolvedValue(okResponse('Hola'))
       await cleanup('hello', settings({ flowMode: 'translate', cleanupProvider: 'groq', groqApiKey: 'gk' }))
       expect(fetchMock).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('summarize', () => {
+    it('posts a summary prompt and returns the model text', async () => {
+      fetchMock.mockResolvedValue(okResponse('Themes: code, email.'))
+      const out = await summarize('a\nb\nc', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      expect(out).toBe('Themes: code, email.')
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content.toLowerCase()).toContain('summ')
+    })
+    it('returns empty string with no key', async () => {
+      expect(await summarize('x', settings({ cleanupProvider: 'groq', groqApiKey: '' }))).toBe('')
+      expect(fetchMock).not.toHaveBeenCalled()
     })
   })
 })
