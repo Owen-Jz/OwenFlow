@@ -7,6 +7,7 @@ import type {
   OwenFlowApi,
   OwenFlowSettings,
   PillState,
+  ProviderTiming,
   SidecarStatusInfo,
   TagCount
 } from '../shared/types'
@@ -63,6 +64,9 @@ const api: OwenFlowApi = {
   },
   clipboard: {
     write: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.clipboardWrite, text)
+  },
+  cleanup: {
+    benchmark: (): Promise<ProviderTiming[]> => ipcRenderer.invoke(IPC.cleanupBenchmark)
   },
   debug: {
     simulateDictation: (): Promise<void> => ipcRenderer.invoke(IPC.debugSimulate)

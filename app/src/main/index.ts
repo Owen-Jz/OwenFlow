@@ -1,5 +1,10 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
+
+// The pill overlay is click-through, so it can never produce a "user gesture" —
+// without this switch Chromium keeps its AudioContext suspended and the
+// recording start/stop cues are permanently silent.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
 import * as history from './history'
 import { clipboardWrite } from './clipboard'
@@ -31,7 +36,7 @@ import {
   transcribe
 } from './sidecar'
 import { inject, killInjector, warmupInjector } from './injector'
-import { cleanup } from './cleanup'
+import { benchmarkProviders, cleanup } from './cleanup'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -129,6 +134,9 @@ function registerIpc(): void {
   // History "Copy" button: navigator.clipboard is unavailable in the packaged
   // file:// renderer (not a secure context), so copy goes through main.
   ipcMain.handle(IPC.clipboardWrite, (_event, text: unknown) => clipboardWrite(text))
+
+  // Settings "Test & compare": time both refinement providers with saved keys.
+  ipcMain.handle(IPC.cleanupBenchmark, () => benchmarkProviders(getSettings()))
 
   ipcMain.handle(IPC.debugSimulate, async () => {
     await simulateDictation()

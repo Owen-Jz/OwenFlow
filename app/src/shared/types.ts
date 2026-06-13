@@ -182,6 +182,10 @@ export interface OwenFlowApi {
      */
     write: (text: string) => Promise<boolean>
   }
+  cleanup: {
+    /** Time both providers against a sample sentence ("cleanup:benchmark"). */
+    benchmark: () => Promise<ProviderTiming[]>
+  }
   debug: {
     /** Trigger the stub pipeline so the pill can be visually verified. */
     simulateDictation: () => Promise<void>
@@ -217,6 +221,7 @@ export const IPC = {
   historyRenameFolder: 'history:renameFolder',
   historyDeleteFolder: 'history:deleteFolder',
   clipboardWrite: 'clipboard:write',
+  cleanupBenchmark: 'cleanup:benchmark',
   uiShowTab: 'ui:show-tab',
   debugSimulate: 'debug:simulate-dictation',
   appInfo: 'app:info',
