@@ -82,3 +82,11 @@ describe('config app profiles', () => {
     expect(DEFAULT_SETTINGS.profiles[0].match).toContain('Code')
   })
 })
+
+describe('config digest', () => {
+  it('declares digest defaults', () => {
+    expect(DEFAULT_SETTINGS.digestEnabled).toBe(true)
+    expect(DEFAULT_SETTINGS.digestHour).toBe(18)
+    expect(DEFAULT_SETTINGS.digestThemes).toBe(false)
+  })
+})

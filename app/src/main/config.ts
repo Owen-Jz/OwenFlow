@@ -24,6 +24,9 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   activeSession: '',
   appProfilesEnabled: false,
   profiles: DEFAULT_PROFILES,
+  digestEnabled: true,
+  digestHour: 18,
+  digestThemes: false,
   launchOnStartup: false,
   theme: 'dark'
 }
@@ -63,6 +66,9 @@ const store = new Store<OwenFlowSettings>({
     activeSession: { type: 'string', default: '' },
     appProfilesEnabled: { type: 'boolean', default: false },
     profiles: { type: 'array', default: [] },
+    digestEnabled: { type: 'boolean', default: true },
+    digestHour: { type: 'number', minimum: 0, maximum: 23, default: 18 },
+    digestThemes: { type: 'boolean', default: false },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }

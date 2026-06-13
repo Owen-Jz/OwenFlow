@@ -91,6 +91,12 @@ export interface OwenFlowSettings {
   appProfilesEnabled: boolean
   /** Per-app formatting profiles (matched on focused process name). */
   profiles: AppProfile[]
+  /** Show a daily dictation digest notification. */
+  digestEnabled: boolean
+  /** Hour of day (0-23) to fire the digest. */
+  digestHour: number
+  /** Include an LLM theme summary in the digest (opt-in; uses your provider). */
+  digestThemes: boolean
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode
