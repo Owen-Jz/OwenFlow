@@ -29,10 +29,13 @@ export const DEFAULT_PROFILES: AppProfile[] = [
 
 /** First profile whose match list contains the app (case-insensitive), or null. */
 export function matchProfile(app: string | null, profiles: AppProfile[]): AppProfile | null {
-  if (!app) return null
+  if (!app || !Array.isArray(profiles)) return null
   const key = app.toLowerCase()
   for (const p of profiles) {
-    if (p.match.some((m) => m.toLowerCase() === key)) return p
+    // Guard malformed entries (hand-edited config) so detection never throws.
+    if (Array.isArray(p?.match) && p.match.some((m) => typeof m === 'string' && m.toLowerCase() === key)) {
+      return p
+    }
   }
   return null
 }

@@ -9,6 +9,12 @@ describe('matchProfile', () => {
     expect(matchProfile('chrome', [{ match: ['Code'] }])).toBeNull()
     expect(matchProfile(null, [{ match: ['Code'] }])).toBeNull()
   })
+  it('does not throw on malformed profile entries (hand-edited config)', () => {
+    // @ts-expect-error intentionally corrupt entries
+    expect(matchProfile('code', [{ match: null }, { foo: 1 }, { match: ['Code'] }])).not.toBeNull()
+    // @ts-expect-error intentionally corrupt profiles arg
+    expect(matchProfile('code', null)).toBeNull()
+  })
 })
 
 describe('applyProfileTransforms', () => {
