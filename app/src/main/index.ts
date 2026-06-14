@@ -305,7 +305,8 @@ app.whenReady().then(async () => {
     runCommand,
     inject,
     notify: (title, body) => notify(title, body, () => {}),
-    sendZeal: (instruction) => sendZealCommand(instruction, getSettings())
+    sendZeal: (instruction) => sendZealCommand(instruction, getSettings()),
+    speak: (text) => getPillWindow()?.webContents.send(IPC.ttsSpeak, text)
   })
 
   const tray = createTray({

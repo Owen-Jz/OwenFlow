@@ -28,6 +28,8 @@ export interface CommandDeps {
   notify: (title: string, body: string) => void
   /** Send a voice instruction to the ZEAL VPS endpoint. Never throws. */
   sendZeal: (instruction: string) => Promise<{ ok: boolean; reply: string; error?: string }>
+  /** Speak text aloud via the sidecar TTS endpoint (best-effort, optional). */
+  speak?: (text: string) => void
 }
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -170,6 +172,7 @@ export async function stopCommand(): Promise<void> {
         tags: [],
         mode: 'command'
       })
+      if (settings.zealSpeakReplies && res.reply) deps.speak?.(res.reply)
       deps.setPillState({ state: 'done' })
       scheduleHide(1500)
     } else {

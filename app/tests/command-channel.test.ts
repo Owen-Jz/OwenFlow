@@ -43,6 +43,10 @@ const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =
   digestThemes: false,
   commandEnabled: true,
   commandHotkey: 'F13',
+  continuousMode: false,
+  zealEndpoint: '',
+  zealApiKey: '',
+  zealSpeakReplies: false,
   ...patch
 })
 
@@ -59,7 +63,8 @@ function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps & Record<st
     runCommand: vi.fn(async () => '- one\n- two'),
     inject: vi.fn(async () => {}),
     notify: vi.fn(),
-    sendZeal: vi.fn(async () => ({ ok: true, reply: 'queued a mission' }))
+    sendZeal: vi.fn(async () => ({ ok: true, reply: 'queued a mission' })),
+    speak: vi.fn()
   }
   return { ...base, ...overrides } as CommandDeps & Record<string, ReturnType<typeof vi.fn>>
 }
@@ -171,6 +176,27 @@ describe('command-channel — zeal path', () => {
     expect(deps.appendHistory).not.toHaveBeenCalled()
     const last = pillStates(deps).at(-1)
     expect(last?.state).toBe('error')
+  })
+
+  it('zeal success: speak called when zealSpeakReplies is true', async () => {
+    const deps = makeDeps({
+      transcribe: vi.fn(async () => ({ text: 'zeal launch a mission', durationMs: 200 })),
+      getSettings: () => baseSettings({ zealSpeakReplies: true })
+    })
+    await runCommand(deps)
+
+    expect(deps.speak).toHaveBeenCalledOnce()
+    expect(deps.speak).toHaveBeenCalledWith('queued a mission')
+  })
+
+  it('zeal success: speak NOT called when zealSpeakReplies is false', async () => {
+    const deps = makeDeps({
+      transcribe: vi.fn(async () => ({ text: 'zeal launch a mission', durationMs: 200 })),
+      getSettings: () => baseSettings({ zealSpeakReplies: false })
+    })
+    await runCommand(deps)
+
+    expect(deps.speak).not.toHaveBeenCalled()
   })
 })
 

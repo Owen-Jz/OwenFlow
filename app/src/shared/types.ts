@@ -261,6 +261,10 @@ export interface OwenFlowApi {
     /** Diff raw vs corrected transcript and return "wrong=>right" proposal strings ("learn:propose"). */
     propose: (raw: string, corrected: string) => Promise<string[]>
   }
+  tts: {
+    /** Subscribe to TTS speak events pushed from main ("tts:speak"). Returns unsubscribe. */
+    onSpeak: (cb: (text: string) => void) => () => void
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -291,5 +295,6 @@ export const IPC = {
   sidecarStatusGet: 'sidecar:status:get',
   sidecarStatus: 'sidecar:status',
   appsDetect: 'apps:detect',
-  learnPropose: 'learn:propose'
+  learnPropose: 'learn:propose',
+  ttsSpeak: 'tts:speak'
 } as const

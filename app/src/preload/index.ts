@@ -91,6 +91,9 @@ const api: OwenFlowApi = {
   learn: {
     propose: (raw: string, corrected: string): Promise<string[]> =>
       ipcRenderer.invoke(IPC.learnPropose, raw, corrected)
+  },
+  tts: {
+    onSpeak: (cb: (text: string) => void) => subscribe<[string]>(IPC.ttsSpeak, cb)
   }
 }
 

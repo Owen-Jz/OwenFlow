@@ -374,3 +374,26 @@ window.owenflow.pill.onState(render)
 window.owenflow.pill.onLevel((frame: LevelFrame) => {
   if (state === 'recording') levels = frame
 })
+
+// ─── TTS: speak ZEAL replies via sidecar /tts endpoint ───────────────────────
+
+let ttsAudio: HTMLAudioElement | null = null
+
+window.owenflow.tts.onSpeak(async (text) => {
+  try {
+    if (ttsAudio) { ttsAudio.pause(); ttsAudio = null }
+    const res = await fetch('http://127.0.0.1:8484/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text })
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    ttsAudio = new Audio(url)
+    ttsAudio.onended = () => { URL.revokeObjectURL(url); ttsAudio = null }
+    await ttsAudio.play()
+  } catch {
+    /* speech is best-effort */
+  }
+})
