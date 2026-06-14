@@ -11,7 +11,9 @@ import tempfile
 import time
 from typing import Optional
 
+import edge_tts
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import Response
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("owenflow.sidecar")
@@ -159,6 +161,23 @@ async def transcribe(
     duration_ms = int((time.perf_counter() - start) * 1000)
     log.info("Transcribed %d bytes in %d ms (device=%s): %r", len(data), duration_ms, _device, text[:120])
     return {"text": text, "duration_ms": duration_ms, "model": _loaded_model}
+
+
+TTS_VOICE = "en-US-AvaNeural"
+TTS_RATE = "-5%"
+
+
+@app.post("/tts")
+async def tts(payload: dict):
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return Response(status_code=400, content=b"text required")
+    communicate = edge_tts.Communicate(text, TTS_VOICE, rate=TTS_RATE)
+    chunks = bytearray()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            chunks.extend(chunk["data"])
+    return Response(content=bytes(chunks), media_type="audio/mpeg")
 
 
 if __name__ == "__main__":
