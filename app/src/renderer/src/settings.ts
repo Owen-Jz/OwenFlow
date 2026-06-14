@@ -59,15 +59,15 @@ systemDark.addEventListener('change', () => {
 
 // ─── Sidebar navigation ─────────────────────────────────────────────────────
 
-type SectionName = 'general' | 'modes' | 'dictionary' | 'apps' | 'history' | 'about'
+type SectionName = 'general' | 'modes' | 'dictionary' | 'apps' | 'zeal' | 'history' | 'about'
 
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item'))
-const pages: SectionName[] = ['general', 'modes', 'dictionary', 'apps', 'history', 'about']
+const pages: SectionName[] = ['general', 'modes', 'dictionary', 'apps', 'zeal', 'history', 'about']
 
 function showSection(name: SectionName): void {
   for (const item of navItems) item.classList.toggle('active', item.dataset.section === name)
   for (const page of pages) $(`page-${page}`).classList.toggle('active', page === name)
-  // Save bar only applies to the settings-form sections.
+  // Save bar only applies to the settings-form sections (not history or about).
   $('form-actions').classList.toggle('hidden', name === 'history' || name === 'about')
   if (name === 'history') void refreshHistory()
 }
@@ -142,6 +142,9 @@ const fStartup = $<HTMLInputElement>('f-startup')
 const fDigestEnabled = $<HTMLInputElement>('f-digest-enabled')
 const fDigestHour = $<HTMLInputElement>('f-digest-hour')
 const fDigestThemes = $<HTMLInputElement>('f-digest-themes')
+const fZealEndpoint = $<HTMLInputElement>('f-zeal-endpoint')
+const fZealKey = $<HTMLInputElement>('f-zeal-key')
+const fZealSpeak = $<HTMLInputElement>('f-zeal-speak')
 const saveStatus = $('save-status')
 
 // ─── App profiles ────────────────────────────────────────────────────────────
@@ -399,6 +402,9 @@ function fillForm(s: OwenFlowSettings): void {
   fCommandEnabled.checked = s.commandEnabled
   fCommandHotkey.value = s.commandHotkey
   checkHotkeyClash()
+  fZealEndpoint.value = s.zealEndpoint
+  fZealKey.value = s.zealApiKey
+  fZealSpeak.checked = s.zealSpeakReplies
   selectFlowMode(s.flowMode ?? 'normal')
   selectTheme(s.theme ?? 'dark')
 }
@@ -432,7 +438,10 @@ function readForm(): Partial<OwenFlowSettings> {
     appProfilesEnabled: fAppProfilesEnabled.checked,
     profiles: profilesDraft,
     commandEnabled: fCommandEnabled.checked,
-    commandHotkey: fCommandHotkey.value.trim() || 'RightAlt'
+    commandHotkey: fCommandHotkey.value.trim() || 'RightAlt',
+    zealEndpoint: fZealEndpoint.value.trim(),
+    zealApiKey: fZealKey.value.trim(),
+    zealSpeakReplies: fZealSpeak.checked,
   }
 }
 

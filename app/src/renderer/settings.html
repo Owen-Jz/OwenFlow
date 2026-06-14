@@ -915,6 +915,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           Apps
         </button>
+        <button class="nav-item" data-section="zeal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5z"/></svg>
+          ZEAL
+        </button>
         <button class="nav-item" data-section="history">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="9" />
@@ -1216,6 +1220,38 @@
             </div>
             <div id="profiles-list"></div>
             <button type="button" class="ghost" id="btn-add-profile">+ Add profile</button>
+          </section>
+
+          <!-- ─── ZEAL ─── -->
+          <section class="page" id="page-zeal">
+            <div class="page-title">ZEAL Voice Command</div>
+            <div class="card">
+              <h2>ZEAL channel</h2>
+              <div class="row">
+                <span class="hint">In Command mode (Settings → General), say "ZEAL …" to send an instruction to your ZEAL agent and "note …" to capture a note. ZEAL executes and replies.</span>
+              </div>
+              <div class="row">
+                <label class="title" for="f-zeal-endpoint">
+                  Endpoint
+                  <span class="hint">POST /api/voice on your VPS</span>
+                </label>
+                <input type="text" id="f-zeal-endpoint" spellcheck="false" />
+              </div>
+              <div class="row">
+                <label class="title" for="f-zeal-key">
+                  Voice API key
+                  <span class="hint">x-voice-key; stored locally</span>
+                </label>
+                <input type="password" id="f-zeal-key" spellcheck="false" />
+              </div>
+              <div class="row">
+                <label class="title" for="f-zeal-speak">
+                  Speak ZEAL replies
+                  <span class="hint">Read replies aloud (needs the sidecar running)</span>
+                </label>
+                <input type="checkbox" id="f-zeal-speak" />
+              </div>
+            </div>
           </section>
 
           <!-- ─── History ─── -->
