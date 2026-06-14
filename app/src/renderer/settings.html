@@ -361,6 +361,41 @@
       .row.hidden {
         display: none;
       }
+      .hotkey-input-group {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .hotkey-input-group input {
+        flex: 1;
+        min-width: 120px;
+      }
+      .btn-capture {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 6px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--surface, transparent);
+        color: inherit;
+        cursor: pointer;
+        transition: all 120ms ease;
+        white-space: nowrap;
+      }
+      .btn-capture:hover {
+        border-color: var(--accent, currentColor);
+      }
+      .btn-capture.listening {
+        background: var(--accent-grad);
+        color: #fff;
+        border-color: transparent;
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
       button.primary,
       button.ghost,
       button.danger {
@@ -953,9 +988,12 @@
               <div class="row">
                 <label class="title" for="f-hotkey">
                   Push-to-talk hotkey
-                  <span class="hint">uiohook keycode name, e.g. RightCtrl, F13</span>
+                  <span class="hint">Click "Press a key" then press the key you want (e.g. Right Option, F13, Caps Lock).</span>
                 </label>
-                <input type="text" id="f-hotkey" spellcheck="false" />
+                <div class="hotkey-input-group">
+                  <input type="text" id="f-hotkey" spellcheck="false" readonly />
+                  <button type="button" class="btn-capture" data-capture-for="f-hotkey">Press a key</button>
+                </div>
               </div>
               <div class="row">
                 <label class="title" for="f-mode">
@@ -1032,9 +1070,12 @@
               <div class="row">
                 <label class="title" for="f-command-hotkey">
                   Command hotkey
-                  <span class="hint">uiohook keycode, e.g. RightAlt, F14</span>
+                  <span class="hint">Click "Press a key" then press the key you want for command mode.</span>
                 </label>
-                <input type="text" id="f-command-hotkey" spellcheck="false" />
+                <div class="hotkey-input-group">
+                  <input type="text" id="f-command-hotkey" spellcheck="false" readonly />
+                  <button type="button" class="btn-capture" data-capture-for="f-command-hotkey">Press a key</button>
+                </div>
               </div>
               <div class="row">
                 <span class="hint" id="command-help">Say "ZEAL …" or "note …" to route; anything else edits your selected text.</span>

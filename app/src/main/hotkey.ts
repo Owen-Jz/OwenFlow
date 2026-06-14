@@ -32,6 +32,9 @@ import type { DictationMode } from '../shared/types'
 // libuiohook VC_PAUSE — uiohook-napi doesn't export a Pause constant.
 const VC_PAUSE = 0x0e45
 
+// libuiohook VC_CAPS_LOCK — not exported by uiohook-napi's UiohookKey.
+const VC_CAPS_LOCK = 0x003a
+
 const KEY_MAP: Record<string, number> = {
   RightCtrl: UiohookKey.CtrlRight,
   LeftCtrl: UiohookKey.Ctrl,
@@ -39,6 +42,9 @@ const KEY_MAP: Record<string, number> = {
   LeftAlt: UiohookKey.Alt,
   RightShift: UiohookKey.ShiftRight,
   LeftShift: UiohookKey.Shift,
+  LeftMeta: UiohookKey.Meta,
+  RightMeta: UiohookKey.MetaRight,
+  CapsLock: VC_CAPS_LOCK,
   ScrollLock: UiohookKey.ScrollLock,
   Pause: VC_PAUSE,
   F1: UiohookKey.F1,
@@ -52,7 +58,19 @@ const KEY_MAP: Record<string, number> = {
   F9: UiohookKey.F9,
   F10: UiohookKey.F10,
   F11: UiohookKey.F11,
-  F12: UiohookKey.F12
+  F12: UiohookKey.F12,
+  F13: UiohookKey.F13,
+  F14: UiohookKey.F14,
+  F15: UiohookKey.F15,
+  F16: UiohookKey.F16,
+  F17: UiohookKey.F17,
+  F18: UiohookKey.F18,
+  F19: UiohookKey.F19,
+  F20: UiohookKey.F20,
+  F21: UiohookKey.F21,
+  F22: UiohookKey.F22,
+  F23: UiohookKey.F23,
+  F24: UiohookKey.F24
 }
 
 export const DEFAULT_HOTKEY = 'RightCtrl'

@@ -94,6 +94,87 @@ function checkHotkeyClash(): void {
 fCommandHotkey.addEventListener('input', checkHotkeyClash)
 fHotkey.addEventListener('input', checkHotkeyClash)
 
+// ─── Hotkey capture ("Press a key…" button) ─────────────────────────────────
+// Maps a browser KeyboardEvent.code (or .key for some special cases) to the
+// uiohook keycode names defined in app/src/main/hotkey.ts KEY_MAP. Only keys
+// usable as a single-key hotkey appear here (modifiers + function + locks).
+const BROWSER_CODE_TO_HOTKEY: Record<string, string> = {
+  ControlLeft: 'LeftCtrl',
+  ControlRight: 'RightCtrl',
+  AltLeft: 'LeftAlt',
+  AltRight: 'RightAlt',
+  ShiftLeft: 'LeftShift',
+  ShiftRight: 'RightShift',
+  MetaLeft: 'LeftMeta',
+  MetaRight: 'RightMeta',
+  CapsLock: 'CapsLock',
+  ScrollLock: 'ScrollLock',
+  Pause: 'Pause',
+  F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4',
+  F5: 'F5', F6: 'F6', F7: 'F7', F8: 'F8',
+  F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+  F13: 'F13', F14: 'F14', F15: 'F15', F16: 'F16',
+  F17: 'F17', F18: 'F18', F19: 'F19', F20: 'F20',
+  F21: 'F21', F22: 'F22', F23: 'F23', F24: 'F24'
+}
+
+let captureCleanup: (() => void) | null = null
+
+function startHotkeyCapture(targetInput: HTMLInputElement, button: HTMLButtonElement): void {
+  // Only one capture at a time — cancel any other in flight.
+  if (captureCleanup) captureCleanup()
+
+  const previousValue = targetInput.value
+  const previousLabel = button.textContent ?? 'Press a key'
+  button.textContent = 'Listening… (Esc to cancel)'
+  button.classList.add('listening')
+
+  const onKeydown = (e: KeyboardEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (e.key === 'Escape') {
+      finish(previousValue)
+      return
+    }
+
+    const name = BROWSER_CODE_TO_HOTKEY[e.code]
+    if (!name) {
+      // Unsupported key — flash the button so the user knows to try another.
+      button.textContent = 'Not supported — try a modifier or F-key'
+      setTimeout(() => {
+        if (captureCleanup) button.textContent = 'Listening… (Esc to cancel)'
+      }, 1200)
+      return
+    }
+    finish(name)
+  }
+
+  const finish = (value: string): void => {
+    targetInput.value = value
+    targetInput.dispatchEvent(new Event('input', { bubbles: true }))
+    if (captureCleanup) captureCleanup()
+  }
+
+  captureCleanup = (): void => {
+    captureCleanup = null
+    window.removeEventListener('keydown', onKeydown, true)
+    button.textContent = previousLabel
+    button.classList.remove('listening')
+  }
+
+  window.addEventListener('keydown', onKeydown, true)
+}
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>('.btn-capture')) {
+  btn.addEventListener('click', () => {
+    const targetId = btn.dataset.captureFor
+    if (!targetId) return
+    const target = document.getElementById(targetId) as HTMLInputElement | null
+    if (target) startHotkeyCapture(target, btn)
+  })
+}
+
 const fMode = $<HTMLSelectElement>('f-mode')
 const fContinuous = $<HTMLInputElement>('f-continuous')
 const fModel = $<HTMLSelectElement>('f-model')
