@@ -30,6 +30,9 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   commandEnabled: false,
   commandHotkey: 'RightAlt',
   continuousMode: false,
+  zealEndpoint: 'https://173-212-225-7.sslip.io/api/voice',
+  zealApiKey: '',
+  zealSpeakReplies: true,
   launchOnStartup: false,
   theme: 'dark'
 }
@@ -75,6 +78,9 @@ const store = new Store<OwenFlowSettings>({
     commandEnabled: { type: 'boolean', default: false },
     commandHotkey: { type: 'string', default: 'RightAlt' },
     continuousMode: { type: 'boolean', default: false },
+    zealEndpoint: { type: 'string', default: 'https://173-212-225-7.sslip.io/api/voice' },
+    zealApiKey: { type: 'string', default: '' },
+    zealSpeakReplies: { type: 'boolean', default: true },
     launchOnStartup: { type: 'boolean', default: false },
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }

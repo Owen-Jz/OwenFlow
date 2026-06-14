@@ -103,6 +103,12 @@ export interface OwenFlowSettings {
   commandHotkey: string
   /** Long-form draft mode: stream segments on pauses. */
   continuousMode: boolean
+  /** ZEAL voice-command endpoint (POST /api/voice). */
+  zealEndpoint: string
+  /** Bearer key for the ZEAL voice endpoint (x-voice-key). */
+  zealApiKey: string
+  /** Speak ZEAL replies aloud (TTS). */
+  zealSpeakReplies: boolean
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode

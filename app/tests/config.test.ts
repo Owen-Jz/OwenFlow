@@ -103,3 +103,21 @@ describe('config continuous mode', () => {
     expect(DEFAULT_SETTINGS.continuousMode).toBe(false)
   })
 })
+
+describe('config ZEAL voice client', () => {
+  it('defaults zealEndpoint to the VPS /api/voice URL, zealApiKey empty, zealSpeakReplies true', () => {
+    expect(DEFAULT_SETTINGS.zealEndpoint).toContain('/api/voice')
+    expect(DEFAULT_SETTINGS.zealApiKey).toBe('')
+    expect(DEFAULT_SETTINGS.zealSpeakReplies).toBe(true)
+  })
+
+  it('declares schema entries for all three ZEAL voice settings', () => {
+    const schema = captured.options?.schema as Record<string, { type?: string; default?: unknown }>
+    expect(schema.zealEndpoint.type).toBe('string')
+    expect(schema.zealEndpoint.default).toContain('/api/voice')
+    expect(schema.zealApiKey.type).toBe('string')
+    expect(schema.zealApiKey.default).toBe('')
+    expect(schema.zealSpeakReplies.type).toBe('boolean')
+    expect(schema.zealSpeakReplies.default).toBe(true)
+  })
+})
