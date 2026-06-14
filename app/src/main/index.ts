@@ -1,3 +1,6 @@
+// Load .env BEFORE any module reads process.env.OWENFLOW_*.
+import './dotenv'
+
 import { app, BrowserWindow, clipboard, ipcMain, Notification, session } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 
