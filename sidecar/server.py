@@ -13,6 +13,7 @@ from typing import Optional
 
 import edge_tts
 from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -60,6 +61,18 @@ def _register_cuda_dlls() -> None:
 _register_cuda_dlls()
 
 app = FastAPI(title="OwenFlow STT Sidecar")
+
+# CORS: the pill renderer runs at localhost:5173 (dev) or file:// (packaged)
+# and POSTs to 127.0.0.1:8484/tts. Without this, browsers send a CORS preflight
+# (OPTIONS) that returns 405 Method Not Allowed, aborting the actual POST and
+# silently breaking the ZEAL voice reply ("speak ZEAL replies" toggle).
+# Sidecar binds 127.0.0.1 only, so allow_origins=["*"] is safe.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _model = None
 _device = "unloaded"
