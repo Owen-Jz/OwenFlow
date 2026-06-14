@@ -10,10 +10,15 @@ describe('classifyCommand', () => {
     expect(classifyCommand('note: buy milk')).toEqual({ sink: 'vault', instruction: 'buy milk' })
     expect(classifyCommand('vault remember the API idea')).toEqual({ sink: 'vault', instruction: 'remember the API idea' })
   })
-  it('defaults to local with the full text', () => {
-    expect(classifyCommand('make this a bullet list')).toEqual({ sink: 'local', instruction: 'make this a bullet list' })
+  it('defaults to zeal with the full text (dedicated ZEAL channel)', () => {
+    expect(classifyCommand('make this a bullet list')).toEqual({ sink: 'zeal', instruction: 'make this a bullet list' })
+    expect(classifyCommand('add a kanban task to review the homepage')).toEqual({ sink: 'zeal', instruction: 'add a kanban task to review the homepage' })
+  })
+  it('routes edit/rewrite prefixes to local LLM text-edit', () => {
+    expect(classifyCommand('edit: make this formal')).toEqual({ sink: 'local', instruction: 'make this formal' })
+    expect(classifyCommand('rewrite this paragraph')).toEqual({ sink: 'local', instruction: 'this paragraph' })
   })
   it('is case-insensitive and tolerates empty', () => {
-    expect(classifyCommand('  ').sink).toBe('local')
+    expect(classifyCommand('  ').sink).toBe('zeal')
   })
 })

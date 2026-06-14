@@ -58,7 +58,9 @@ function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps & Record<st
     recorderStop: vi.fn(async () => wav),
     getSettings: () => baseSettings(),
     appendHistory: vi.fn(),
-    transcribe: vi.fn(async () => ({ text: 'make a bullet list', durationMs: 300 })),
+    // "edit:" prefix routes to the local LLM text-edit sink; without it, the
+    // command-channel now defaults to ZEAL (Right Cmd is a dedicated ZEAL channel).
+    transcribe: vi.fn(async () => ({ text: 'edit: make a bullet list', durationMs: 300 })),
     copySelection: vi.fn(async () => 'one two'),
     runCommand: vi.fn(async () => '- one\n- two'),
     inject: vi.fn(async () => {}),
