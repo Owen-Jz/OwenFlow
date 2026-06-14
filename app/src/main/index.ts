@@ -347,6 +347,10 @@ app.whenReady().then(async () => {
 
   // Sidecar status → tray tooltip.
   const updateTooltip = (): void => {
+    // On quit, before-quit destroys the tray before will-quit's stopSidecar()
+    // emits a final 'stopped' status — guard so the late update can't throw
+    // "Tray is destroyed".
+    if (tray.isDestroyed()) return
     const { status, detail } = getSidecarStatus()
     const suffix = detail ? ` (${detail})` : ''
     tray.setToolTip(`OwenFlow — sidecar ${status}${suffix}`)
