@@ -100,16 +100,29 @@ async function checkHealth(timeoutMs = 1500): Promise<SidecarHealth | null> {
 /** Kill whatever is squatting on the sidecar port (orphan from a crashed run). */
 function killOrphanOnPort(): void {
   try {
-    spawnSync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        `Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | ` +
-          `ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
-      ],
-      { timeout: 10_000, windowsHide: true }
-    )
+    if (process.platform === 'win32') {
+      spawnSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          `Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | ` +
+            `ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`
+        ],
+        { timeout: 10_000, windowsHide: true }
+      )
+    } else {
+      // macOS/Linux: lsof finds the PID(s) listening on the port; kill -9 each.
+      const result = spawnSync('lsof', ['-ti', `tcp:${PORT}`, '-sTCP:LISTEN'], { timeout: 10_000 })
+      const pids = result.stdout
+        ?.toString()
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      for (const pid of pids ?? []) {
+        spawnSync('kill', ['-9', pid], { timeout: 5_000 })
+      }
+    }
   } catch (err) {
     console.warn('[sidecar] orphan cleanup failed:', err)
   }
@@ -145,7 +158,32 @@ async function spawnAndWait(): Promise<void> {
 
   setStatus('starting', `loading whisper "${currentModel}"`)
 
-  const proc = spawn('py', ['-3.13', 'server.py'], {
+  // Interpreter resolution (in order):
+  //   1. OWENFLOW_PYTHON env override
+  //   2. <sidecar>/.venv/bin/python (POSIX) or <sidecar>\.venv\Scripts\python.exe (Windows)
+  //   3. Windows: `py -3.13`. POSIX: `python3`.
+  let pythonCmd: string
+  let pythonArgs: string[]
+  if (process.env.OWENFLOW_PYTHON) {
+    pythonCmd = process.env.OWENFLOW_PYTHON
+    pythonArgs = ['server.py']
+  } else {
+    const venvPython = process.platform === 'win32'
+      ? join(dir, '.venv', 'Scripts', 'python.exe')
+      : join(dir, '.venv', 'bin', 'python')
+    if (existsSync(venvPython)) {
+      pythonCmd = venvPython
+      pythonArgs = ['server.py']
+    } else if (process.platform === 'win32') {
+      pythonCmd = 'py'
+      pythonArgs = ['-3.13', 'server.py']
+    } else {
+      pythonCmd = 'python3'
+      pythonArgs = ['server.py']
+    }
+  }
+
+  const proc = spawn(pythonCmd, pythonArgs, {
     cwd: dir,
     env: {
       ...process.env,
@@ -217,10 +255,23 @@ export function stopSidecar(): void {
   child = null
   if (proc?.pid) {
     try {
-      spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
-        timeout: 10_000,
-        windowsHide: true
-      })
+      if (process.platform === 'win32') {
+        // `py` is a launcher — kill the whole tree so the python child dies too.
+        spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], {
+          timeout: 10_000,
+          windowsHide: true
+        })
+      } else {
+        // SIGTERM first; if uvicorn ignores it, SIGKILL after a beat.
+        proc.kill('SIGTERM')
+        setTimeout(() => {
+          try {
+            if (proc.exitCode === null) proc.kill('SIGKILL')
+          } catch {
+            // already gone
+          }
+        }, 1500)
+      }
     } catch {
       proc.kill()
     }

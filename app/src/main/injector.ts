@@ -13,12 +13,39 @@
  * restored after a short delay (the paste target reads the clipboard first).
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { clipboard } from 'electron'
 
 const PASTE_SETTLE_MS = 150
 const HELPER_READY_TIMEOUT_MS = 15_000
 const PASTE_TIMEOUT_MS = 3_000
+
+const IS_MAC = process.platform === 'darwin'
+
+// ─── macOS path (osascript-driven) ───────────────────────────────────────────
+// AppleScript is invoked one-shot per action. Requires the user to grant
+// Accessibility permission to the Electron app on first paste.
+// (System Settings → Privacy & Security → Accessibility)
+
+function runOsa(script: string, timeoutMs = PASTE_TIMEOUT_MS): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('osascript', ['-e', script], { timeout: timeoutMs }, (err, stdout) => {
+      if (err) reject(err)
+      else resolve(stdout.toString().trim())
+    })
+  })
+}
+
+const MAC_PASTE_SCRIPT =
+  'tell application "System Events" to keystroke "v" using command down'
+const MAC_COPY_SCRIPT =
+  'tell application "System Events" to keystroke "c" using command down'
+const MAC_FOREGROUND_SCRIPT =
+  'tell application "System Events" to get name of first process whose frontmost is true'
+
+async function macSendCmdV(): Promise<void> {
+  await runOsa(MAC_PASTE_SCRIPT)
+}
 
 export class PasteFailedError extends Error {
   constructor(message = 'Copied — paste manually') {
@@ -156,11 +183,13 @@ function ensureHelper(): Promise<void> {
 
 /** Pre-warm the PowerShell helper at app boot so the first paste is fast. */
 export function warmupInjector(): void {
+  if (IS_MAC) return // osascript is one-shot — nothing to warm
   ensureHelper().catch((err) => console.warn('[injector] warmup failed:', err.message))
 }
 
 /** Kill the helper on app quit. */
 export function killInjector(): void {
+  if (IS_MAC) return
   discardHelper()
 }
 
@@ -176,6 +205,14 @@ async function sendCtrlV(): Promise<void> {
 
 /** Process name of the foreground window (no .exe), or null on any failure. */
 export async function getForegroundApp(): Promise<string | null> {
+  if (IS_MAC) {
+    try {
+      const name = await runOsa(MAC_FOREGROUND_SCRIPT)
+      return name || null
+    } catch {
+      return null
+    }
+  }
   try {
     await ensureHelper()
     const proc = helper
@@ -189,8 +226,17 @@ export async function getForegroundApp(): Promise<string | null> {
   }
 }
 
-/** Copy the current selection (Ctrl+C) and return the clipboard text. '' on failure. */
+/** Copy the current selection (Ctrl+C / Cmd+C) and return the clipboard text. '' on failure. */
 export async function copySelection(): Promise<string> {
+  if (IS_MAC) {
+    try {
+      await runOsa(MAC_COPY_SCRIPT)
+      await delay(COPY_SETTLE_MS)
+      return clipboard.readText()
+    } catch {
+      return ''
+    }
+  }
   try {
     await ensureHelper()
     const proc = helper
@@ -218,7 +264,8 @@ export async function inject(text: string): Promise<void> {
   clipboard.writeText(text)
 
   try {
-    await sendCtrlV()
+    if (IS_MAC) await macSendCmdV()
+    else await sendCtrlV()
   } catch (err) {
     console.error('[injector] paste failed:', err instanceof Error ? err.message : err)
     // Deliberately NOT restoring — the dictated text must stay available.

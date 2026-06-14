@@ -70,24 +70,28 @@ def _try_load(model_size: str, compute_type: str) -> bool:
     """Load model_size with the CUDA warmup-probe -> CPU int8 fallback.
     Returns True on success, False if neither device could load it."""
     global _model, _device, _loaded_model
+    import sys
+
     from faster_whisper import WhisperModel
 
-    try:
-        log.info("Loading whisper model '%s' on cuda/%s...", model_size, compute_type)
-        model = WhisperModel(model_size, device="cuda", compute_type=compute_type)
-        # CUDA errors surface lazily at inference (e.g. missing cuBLAS/cuDNN
-        # DLLs, OOM), so validate with a tiny warmup before committing to GPU.
-        import numpy as np
+    # Apple Silicon has no CUDA — skip the probe to avoid noisy warnings.
+    if sys.platform != "darwin":
+        try:
+            log.info("Loading whisper model '%s' on cuda/%s...", model_size, compute_type)
+            model = WhisperModel(model_size, device="cuda", compute_type=compute_type)
+            # CUDA errors surface lazily at inference (e.g. missing cuBLAS/cuDNN
+            # DLLs, OOM), so validate with a tiny warmup before committing to GPU.
+            import numpy as np
 
-        segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32))
-        list(segments)
-        _model = model
-        _device = "cuda"
-        _loaded_model = model_size
-        log.info("Model '%s' loaded on CUDA (%s).", model_size, compute_type)
-        return True
-    except Exception as e:
-        log.warning("CUDA load of '%s' failed (%s); falling back to CPU int8.", model_size, e)
+            segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32))
+            list(segments)
+            _model = model
+            _device = "cuda"
+            _loaded_model = model_size
+            log.info("Model '%s' loaded on CUDA (%s).", model_size, compute_type)
+            return True
+        except Exception as e:
+            log.warning("CUDA load of '%s' failed (%s); falling back to CPU int8.", model_size, e)
 
     try:
         _model = WhisperModel(model_size, device="cpu", compute_type="int8")
