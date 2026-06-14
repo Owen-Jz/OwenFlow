@@ -58,7 +58,8 @@ function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps & Record<st
     copySelection: vi.fn(async () => 'one two'),
     runCommand: vi.fn(async () => '- one\n- two'),
     inject: vi.fn(async () => {}),
-    notify: vi.fn()
+    notify: vi.fn(),
+    sendZeal: vi.fn(async () => ({ ok: true, reply: 'queued a mission' }))
   }
   return { ...base, ...overrides } as CommandDeps & Record<string, ReturnType<typeof vi.fn>>
 }
@@ -125,28 +126,51 @@ describe('command-channel — zeal path', () => {
     vi.useRealTimers()
   })
 
-  it('routes zeal prefix to notify, does NOT inject or runCommand', async () => {
+  it('routes zeal prefix: calls sendZeal, notifies with reply, records history, does NOT inject or runCommand', async () => {
     const deps = makeDeps({
       transcribe: vi.fn(async () => ({ text: 'zeal launch a mission', durationMs: 200 }))
     })
     await runCommand(deps)
 
+    expect(deps.sendZeal).toHaveBeenCalledOnce()
+    expect(deps.sendZeal).toHaveBeenCalledWith('launch a mission')
     expect(deps.notify).toHaveBeenCalledOnce()
-    expect(deps.notify).toHaveBeenCalledWith('Command channel', expect.stringContaining('not set up'))
+    expect(deps.notify).toHaveBeenCalledWith('ZEAL', 'queued a mission')
     expect(deps.inject).not.toHaveBeenCalled()
     expect(deps.runCommand).not.toHaveBeenCalled()
-    expect(deps.appendHistory).not.toHaveBeenCalled()
+    expect(deps.appendHistory).toHaveBeenCalledOnce()
+    const entry = (deps.appendHistory as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(entry.raw).toBe('launch a mission')
+    expect(entry.final).toBe('queued a mission')
+    expect(entry.mode).toBe('command')
   })
 
-  it('routes vault prefix to notify, does NOT inject or runCommand', async () => {
+  it('routes vault prefix: calls sendZeal, notifies with reply, does NOT inject or runCommand', async () => {
     const deps = makeDeps({
       transcribe: vi.fn(async () => ({ text: 'vault remember this thing', durationMs: 200 }))
     })
     await runCommand(deps)
 
+    expect(deps.sendZeal).toHaveBeenCalledOnce()
     expect(deps.notify).toHaveBeenCalledOnce()
+    expect(deps.notify).toHaveBeenCalledWith('ZEAL', 'queued a mission')
     expect(deps.inject).not.toHaveBeenCalled()
     expect(deps.runCommand).not.toHaveBeenCalled()
+  })
+
+  it('zeal path: on sendZeal failure, notifies with error and shows pill error', async () => {
+    const deps = makeDeps({
+      transcribe: vi.fn(async () => ({ text: 'zeal launch a mission', durationMs: 200 })),
+      sendZeal: vi.fn(async () => ({ ok: false, reply: '', error: 'ZEAL HTTP 502' }))
+    })
+    await runCommand(deps)
+
+    expect(deps.sendZeal).toHaveBeenCalledOnce()
+    expect(deps.notify).toHaveBeenCalledWith('ZEAL', 'ZEAL HTTP 502')
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+    const last = pillStates(deps).at(-1)
+    expect(last?.state).toBe('error')
   })
 })
 

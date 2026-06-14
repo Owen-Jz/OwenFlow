@@ -26,6 +26,8 @@ export interface CommandDeps {
   runCommand: (instruction: string, target: string, settings: OwenFlowSettings) => Promise<string>
   inject: (text: string) => Promise<void>
   notify: (title: string, body: string) => void
+  /** Send a voice instruction to the ZEAL VPS endpoint. Never throws. */
+  sendZeal: (instruction: string) => Promise<{ ok: boolean; reply: string; error?: string }>
 }
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -152,12 +154,29 @@ export async function stopCommand(): Promise<void> {
   // 4. Classify intent.
   const route = classifyCommand(raw)
 
-  // 5a. Remote sinks — not yet wired.
+  // 5a. Remote sinks — ZEAL voice endpoint (vault routes through the same
+  //     endpoint; ZEAL's executor handles note-taking as a dedicated sink later).
   if (route.sink === 'zeal' || route.sink === 'vault') {
+    const res = await deps.sendZeal(route.instruction)
+    if (gen !== generation) return
     processing = false
-    deps.notify('Command channel', 'ZEAL and vault voice commands are not set up yet.')
-    deps.setPillState({ state: 'done' })
-    scheduleHide(1500)
+    if (res.ok) {
+      deps.notify('ZEAL', res.reply)
+      deps.appendHistory({
+        ts: Date.now(),
+        raw: route.instruction,
+        final: res.reply,
+        durationMs: Date.now() - startedAt,
+        tags: [],
+        mode: 'command'
+      })
+      deps.setPillState({ state: 'done' })
+      scheduleHide(1500)
+    } else {
+      deps.notify('ZEAL', res.error || 'ZEAL command failed')
+      deps.setPillState({ state: 'error', message: res.error || 'ZEAL command failed' })
+      scheduleHide(3000)
+    }
     return
   }
 

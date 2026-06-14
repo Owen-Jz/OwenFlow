@@ -59,6 +59,7 @@ import {
 import { copySelection, getForegroundApp, inject, killInjector, warmupInjector } from './injector'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
+import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
@@ -303,7 +304,8 @@ app.whenReady().then(async () => {
     copySelection,
     runCommand,
     inject,
-    notify: (title, body) => notify(title, body, () => {})
+    notify: (title, body) => notify(title, body, () => {}),
+    sendZeal: (instruction) => sendZealCommand(instruction, getSettings())
   })
 
   const tray = createTray({
