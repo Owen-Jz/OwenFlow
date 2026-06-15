@@ -26,8 +26,17 @@ export async function sendZealCommand(message: string, settings: OwenFlowSetting
       body: JSON.stringify({ message }),
       signal: controller.signal
     })
-    if (!res.ok) return { ok: false, reply: '', error: `ZEAL HTTP ${res.status}` }
-    const data = (await res.json()) as ZealReply
+    // Server returns a structured JSON body even on 4xx/5xx ({ ok:false, error:'...' });
+    // surface it so the pill shows the real reason ("Voice LLM HTTP 429: ...") instead
+    // of the opaque "ZEAL HTTP 502".
+    const data = (await res.json().catch(() => ({}))) as ZealReply
+    if (!res.ok) {
+      return {
+        ok: false,
+        reply: '',
+        error: data.error ? `ZEAL ${res.status}: ${data.error}` : `ZEAL HTTP ${res.status}`,
+      }
+    }
     return { ok: !!data.ok, reply: data.reply ?? '', actions: data.actions, error: data.error }
   } catch (err) {
     return { ok: false, reply: '', error: err instanceof Error ? err.message : 'request failed' }
