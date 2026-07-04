@@ -1,16 +1,11 @@
 /**
- * Settings window renderer — sidebar app shell with
- * General / Modes / Dictionary / History / About sections.
+ * Settings window renderer — frameless charcoal app shell (design option B):
+ * Home / Modes / Dictionary / History + a collapsible Advanced group
+ * (General / Apps / Command / ZEAL / Digest / About).
+ * Typography is the system UI stack (no webfonts).
  */
 
-// Techy typography: Space Grotesk for headings/UI, JetBrains Mono for
-// values, inputs and micro-text.
-import '@fontsource/space-grotesk/400.css'
-import '@fontsource/space-grotesk/500.css'
-import '@fontsource/space-grotesk/700.css'
-import '@fontsource/jetbrains-mono/400.css'
-import '@fontsource/jetbrains-mono/700.css'
-
+import { computeHomeStats, hotkeyKeyLabels, relativeTime } from './home-stats'
 import type {
   AppProfile,
   CleanupIntensity,
@@ -58,19 +53,86 @@ systemDark.addEventListener('change', () => {
   if (selectedTheme === 'system') applyTheme()
 })
 
+// ─── Custom titlebar window controls (frameless window) ─────────────────────
+
+$('win-min').addEventListener('click', () => window.owenflow.win.minimize())
+$('win-max').addEventListener('click', () => window.owenflow.win.maximize())
+$('win-close').addEventListener('click', () => window.owenflow.win.close())
+
 // ─── Sidebar navigation ─────────────────────────────────────────────────────
 
-type SectionName = 'general' | 'modes' | 'dictionary' | 'apps' | 'zeal' | 'history' | 'about'
+type SectionName =
+  | 'home'
+  | 'modes'
+  | 'dictionary'
+  | 'history'
+  | 'general'
+  | 'apps'
+  | 'command'
+  | 'zeal'
+  | 'digest'
+  | 'about'
 
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('.nav-item'))
-const pages: SectionName[] = ['general', 'modes', 'dictionary', 'apps', 'zeal', 'history', 'about']
+const pages: SectionName[] = [
+  'home',
+  'modes',
+  'dictionary',
+  'history',
+  'general',
+  'apps',
+  'command',
+  'zeal',
+  'digest',
+  'about'
+]
+
+/** Sections that live inside the collapsible ADVANCED group. */
+const ADVANCED_SECTIONS: SectionName[] = ['general', 'apps', 'command', 'zeal', 'digest', 'about']
+
+/** Sections with no settings form → no save bar. */
+const NO_SAVE_BAR: SectionName[] = ['home', 'history', 'about']
+
+// Collapsible ADVANCED group — open/closed persists across sessions.
+const ADVANCED_LS_KEY = 'owenflow.advancedOpen'
+const advancedToggle = $('advanced-toggle')
+const advancedSub = $('advanced-sub')
+
+function setAdvancedOpen(open: boolean, persist = true): void {
+  advancedSub.classList.toggle('collapsed', !open)
+  advancedToggle.classList.toggle('open', open)
+  advancedToggle.setAttribute('aria-expanded', String(open))
+  if (persist) {
+    try {
+      localStorage.setItem(ADVANCED_LS_KEY, open ? '1' : '0')
+    } catch {
+      /* storage unavailable — session-only */
+    }
+  }
+}
+
+advancedToggle.addEventListener('click', () => {
+  setAdvancedOpen(advancedSub.classList.contains('collapsed'))
+})
+
+// Restore persisted state (default: collapsed).
+try {
+  setAdvancedOpen(localStorage.getItem(ADVANCED_LS_KEY) === '1', false)
+} catch {
+  setAdvancedOpen(false, false)
+}
 
 function showSection(name: SectionName): void {
   for (const item of navItems) item.classList.toggle('active', item.dataset.section === name)
   for (const page of pages) $(`page-${page}`).classList.toggle('active', page === name)
-  // Save bar only applies to the settings-form sections (not history or about).
-  $('form-actions').classList.toggle('hidden', name === 'history' || name === 'about')
+  // Navigating into an Advanced section (tray, tab link) reveals the group.
+  if (ADVANCED_SECTIONS.includes(name) && advancedSub.classList.contains('collapsed')) {
+    setAdvancedOpen(true, false)
+  }
+  // Save bar only applies to the settings-form sections.
+  $('form-actions').classList.toggle('hidden', NO_SAVE_BAR.includes(name))
   if (name === 'history') void refreshHistory()
+  if (name === 'home') void refreshHome()
 }
 
 for (const item of navItems) {
@@ -78,7 +140,7 @@ for (const item of navItems) {
 }
 
 // Main process still speaks the old two-tab language (tray menu items).
-window.owenflow.ui.onShowTab((tab) => showSection(tab === 'history' ? 'history' : 'general'))
+window.owenflow.ui.onShowTab((tab) => showSection(tab === 'history' ? 'history' : 'home'))
 
 // ─── Settings form ──────────────────────────────────────────────────────────
 
@@ -144,6 +206,8 @@ function selectIntensity(level: CleanupIntensity): void {
     opt.classList.toggle('active', opt.dataset.intensityOpt === level)
   }
   intensityDesc.textContent = INTENSITY_DESCRIPTIONS[level]
+  // Home cleanup chip mirrors the current intensity.
+  $('home-cleanup-level').textContent = level.charAt(0).toUpperCase() + level.slice(1)
 }
 
 for (const opt of intensityOpts) {
@@ -396,6 +460,7 @@ function selectFlowMode(mode: FlowMode): void {
     card.classList.toggle('selected', card.dataset.flowMode === mode)
   }
   translateTargetRow.classList.toggle('hidden', mode !== 'translate')
+  updateHomeChips(mode)
 }
 
 for (const card of modeCards) {
@@ -435,6 +500,7 @@ function fillForm(s: OwenFlowSettings): void {
   fZealSpeak.checked = s.zealSpeakReplies
   selectFlowMode(s.flowMode ?? 'normal')
   selectTheme(s.theme ?? 'dark')
+  updateHomeHint(s.hotkey, s.mode)
 }
 
 function readForm(): Partial<OwenFlowSettings> {
@@ -1199,13 +1265,155 @@ const sidecarText = $('sidecar-status-text')
 
 function renderSidecarStatus({ status, detail }: SidecarStatusInfo): void {
   sidecarPill.dataset.status = status
-  sidecarText.textContent = `sidecar ${status}${detail ? ` · ${detail}` : ''}`
+  // The pill is 180px-sidebar-wide: show just the model name when ready
+  // ('whisper "large-v3-turbo"' → 'large-v3-turbo · ready'); full detail
+  // stays in the hover tooltip.
+  const model = /"([^"]+)"/.exec(detail)?.[1]
+  sidecarText.textContent =
+    status === 'ready' && model ? `${model} · ready` : `sidecar ${status}${detail ? ` · ${detail}` : ''}`
   sidecarPill.title = `Local Whisper sidecar — ${status}${detail ? ` (${detail})` : ''}`
 }
 
 void window.owenflow.sidecar.get().then(renderSidecarStatus)
 window.owenflow.sidecar.onStatus(renderSidecarStatus)
 
+// ─── Home ───────────────────────────────────────────────────────────────────
+
+const homeChips = Array.from(document.querySelectorAll<HTMLButtonElement>('.chip[data-home-mode]'))
+
+/** Reflect the active flow mode on the Home chip row (called by selectFlowMode). */
+function updateHomeChips(mode: FlowMode): void {
+  for (const chip of homeChips) chip.classList.toggle('active', chip.dataset.homeMode === mode)
+}
+
+// Home chips are LIVE: clicking one persists the flow mode immediately
+// (unlike the Modes cards, which stage a draft until Save).
+for (const chip of homeChips) {
+  chip.addEventListener('click', async () => {
+    const mode = chip.dataset.homeMode as FlowMode
+    selectFlowMode(mode) // instant feedback (also syncs the Modes cards)
+    await window.owenflow.settings.set({ flowMode: mode })
+  })
+}
+
+// Cleanup chip navigates to Modes, where intensity lives.
+$('home-cleanup-chip').addEventListener('click', () => showSection('modes'))
+$('home-view-history').addEventListener('click', () => showSection('history'))
+
+/** Time-of-day greeting + date line. */
+function renderGreeting(now = new Date()): void {
+  const hour = now.getHours()
+  const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
+  $('home-greeting').textContent = `Good ${part}, Owen`
+  $('home-date').textContent = now.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+/** Footer hint built from the ACTUAL configured hotkey + dictation mode. */
+function updateHomeHint(hotkey: string, mode: string): void {
+  const hint = $('home-hint')
+  hint.replaceChildren()
+  const kbds = hotkeyKeyLabels(hotkey).map((label) => {
+    const kbd = document.createElement('span')
+    kbd.className = 'kbd'
+    kbd.textContent = label
+    return kbd
+  })
+  if (mode === 'toggle') {
+    hint.append('Press ', ...kbds, ' to start dictating  ·  press again to stop')
+  } else {
+    hint.append('Hold ', ...kbds, ' to dictate  ·  double-tap to lock')
+  }
+}
+
+/** Short badge for the app column, e.g. "Cursor" → "Cu". */
+function appBadge(app: string | undefined): string {
+  const name = (app ?? '').trim()
+  if (!name) return '·'
+  return name.slice(0, 2).replace(/^(.)(.)$/, (_m, a: string, b: string) => a.toUpperCase() + b)
+}
+
+function renderRecentRow(entry: HistoryEntry): HTMLElement {
+  const row = document.createElement('div')
+  row.className = 'rrow'
+
+  const badge = document.createElement('div')
+  badge.className = 'appbadge'
+  badge.textContent = appBadge(entry.app)
+  badge.title = entry.app ?? ''
+
+  const body = document.createElement('div')
+  body.className = 'rbody'
+  const text = document.createElement('div')
+  text.className = 'rtext'
+  text.textContent = entry.final
+  text.title = entry.final
+  const meta = document.createElement('div')
+  meta.className = 'rmeta'
+  meta.textContent = `${entry.app ? `${entry.app} · ` : ''}${relativeTime(entry.ts)}`
+  body.append(text, meta)
+
+  const copy = document.createElement('button')
+  copy.className = 'rcopy'
+  copy.title = 'Copy'
+  copy.innerHTML =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg>'
+  copy.addEventListener('click', async () => {
+    try {
+      await window.owenflow.clipboard.write(entry.final)
+      copy.title = 'Copied ✓'
+      setTimeout(() => (copy.title = 'Copy'), 1200)
+    } catch {
+      /* ignore */
+    }
+  })
+
+  row.append(badge, body, copy)
+  return row
+}
+
+/** Recompute greeting, stats and the recent list from history. */
+async function refreshHome(): Promise<void> {
+  renderGreeting()
+  const entries = await window.owenflow.history.list(1000)
+  const stats = computeHomeStats(entries)
+
+  $('stat-count').textContent = String(stats.todayCount)
+  $('stat-words').textContent = stats.wordsToday.toLocaleString()
+  const saved = $('stat-saved')
+  saved.replaceChildren(String(stats.timeSavedMin))
+  const savedUnit = document.createElement('small')
+  savedUnit.textContent = 'min'
+  saved.append(savedUnit)
+  const streak = $('stat-streak')
+  streak.replaceChildren(String(stats.streakDays))
+  const streakUnit = document.createElement('small')
+  streakUnit.textContent = stats.streakDays === 1 ? 'day' : 'days'
+  streak.append(streakUnit)
+
+  const recent = $('home-recent')
+  recent.replaceChildren()
+  const latest = entries.slice(0, 5)
+  if (latest.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'rempty'
+    empty.textContent = 'No dictations yet. Hold the hotkey and speak.'
+    recent.append(empty)
+    return
+  }
+  for (const entry of latest) recent.append(renderRecentRow(entry))
+}
+
+// "Dictate now": main minimizes this window and starts a dictation (no-op if
+// one is already active). Stopping is owned by the hotkey state machine.
+$('btn-dictate-now').addEventListener('click', () => {
+  void window.owenflow.dictation.start()
+})
+
 // ─── Init ───────────────────────────────────────────────────────────────────
 
 void window.owenflow.settings.get().then(fillForm)
+void refreshHome()

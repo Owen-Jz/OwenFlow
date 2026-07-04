@@ -57,6 +57,15 @@ const ADD_TYPE_LINE =
   'uint sent=SendInput(4u,inputs,Marshal.SizeOf(typeof(INPUT)));' +
   'if(sent!=4u){throw new Exception("SendInput failed: "+Marshal.GetLastWin32Error());}' +
   '}' +
+  // Single Enter keystroke (VK_RETURN down/up) for the "press enter" voice
+  // command — sent AFTER a paste so the focused app submits the pasted text.
+  'public static void PressEnter(){' +
+  'INPUT[] inputs=new INPUT[2];' +
+  'inputs[0].type=1;inputs[0].ki.wVk=0x0D;' + // Enter down
+  'inputs[1].type=1;inputs[1].ki.wVk=0x0D;inputs[1].ki.dwFlags=2;' + // Enter up (KEYEVENTF_KEYUP)
+  'uint sent=SendInput(2u,inputs,Marshal.SizeOf(typeof(INPUT)));' +
+  'if(sent!=2u){throw new Exception("SendInput failed: "+Marshal.GetLastWin32Error());}' +
+  '}' +
   '}' +
   "';[Console]::Out.WriteLine('READY')"
 
@@ -67,6 +76,10 @@ const PASTE_LINE =
 const COPY_SETTLE_MS = 140
 const COPY_LINE =
   "try{[OwenFlowInput]::CopyCtrlC();[Console]::Out.WriteLine('OK')}" +
+  "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
+
+const PRESS_ENTER_LINE =
+  "try{[OwenFlowInput]::PressEnter();[Console]::Out.WriteLine('OK')}" +
   "catch{[Console]::Out.WriteLine('ERR ' + $_.Exception.Message)}"
 
 const FOREGROUND_LINE =
@@ -170,6 +183,24 @@ async function sendCtrlV(): Promise<void> {
   if (!proc?.stdin) throw new Error('Helper unavailable')
   const reply = nextLine(PASTE_TIMEOUT_MS)
   proc.stdin.write(PASTE_LINE + '\n')
+  const line = await reply
+  if (line !== 'OK') throw new Error(line.startsWith('ERR') ? line : `Helper said: ${line}`)
+}
+
+/**
+ * Send a single Enter keystroke to the focused app (the "press enter" voice
+ * command). Runs through the same persistent helper as paste, so it lands in
+ * whatever window just received the Ctrl+V — inject() has already waited out
+ * PASTE_SETTLE_MS, so the pasted text is committed before Enter fires.
+ * Throws on failure; the pipeline treats that as non-fatal (text is already
+ * pasted — a missed Enter is a shrug, not a lost dictation).
+ */
+export async function pressEnter(): Promise<void> {
+  await ensureHelper()
+  const proc = helper
+  if (!proc?.stdin) throw new Error('Helper unavailable')
+  const reply = nextLine(PASTE_TIMEOUT_MS)
+  proc.stdin.write(PRESS_ENTER_LINE + '\n')
   const line = await reply
   if (line !== 'OK') throw new Error(line.startsWith('ERR') ? line : `Helper said: ${line}`)
 }

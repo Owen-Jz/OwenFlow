@@ -94,6 +94,20 @@ const api: OwenFlowApi = {
   },
   tts: {
     onSpeak: (cb: (text: string) => void) => subscribe<[string]>(IPC.ttsSpeak, cb)
+  },
+  win: {
+    minimize: (): void => {
+      ipcRenderer.send(IPC.winMinimize)
+    },
+    maximize: (): void => {
+      ipcRenderer.send(IPC.winMaximize)
+    },
+    close: (): void => {
+      ipcRenderer.send(IPC.winClose)
+    }
+  },
+  dictation: {
+    start: (): Promise<void> => ipcRenderer.invoke(IPC.dictationStart)
   }
 }
 

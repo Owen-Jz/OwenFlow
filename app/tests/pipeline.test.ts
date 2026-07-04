@@ -43,6 +43,7 @@ interface MockedDeps extends PipelineDeps {
   transcribe: ReturnType<typeof vi.fn>
   cleanup: ReturnType<typeof vi.fn>
   inject: ReturnType<typeof vi.fn>
+  pressEnter: ReturnType<typeof vi.fn>
   getForegroundApp: ReturnType<typeof vi.fn>
   enqueueTranscription: ReturnType<typeof vi.fn>
 }
@@ -67,6 +68,7 @@ function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
       return raw.replace(/\bum\s+/i, '').trim()
     }),
     inject: vi.fn(async () => void callOrder.push('inject')),
+    pressEnter: vi.fn(async () => void callOrder.push('pressEnter')),
     getForegroundApp: vi.fn(async () => null),
     enqueueTranscription: vi.fn()
   }
@@ -299,6 +301,83 @@ describe('pipeline', () => {
     deps.transcribe.mockResolvedValue({ text: 'please review the attached', durationMs: 10 })
     await runDictation(deps)
     expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal')
+  })
+})
+
+describe('press enter voice command', () => {
+  it('trailing "press enter" strips the phrase, pastes, then presses Enter (in that order)', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), order)
+    deps.transcribe.mockImplementation(async () => {
+      order.push('transcribe')
+      return { text: 'reply sounds good press enter', durationMs: 10 }
+    })
+    await runDictation(deps)
+
+    expect(deps.inject).toHaveBeenCalledWith('reply sounds good')
+    expect(deps.pressEnter).toHaveBeenCalledTimes(1)
+    // Enter fires strictly AFTER the successful paste, never before.
+    expect(order).toEqual(['record', 'recorderStop', 'transcribe', 'inject', 'pressEnter', 'history'])
+    // History gets the stripped text, not the spoken command.
+    const entry = deps.appendHistory.mock.calls.at(-1)[0]
+    expect(entry.final).toBe('reply sounds good')
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
+  })
+
+  it('detects the command on the POST-cleanup text ("… Press enter.")', async () => {
+    const deps = makeDeps(baseSettings(), [])
+    deps.transcribe.mockResolvedValue({ text: 'um sounds good press enter', durationMs: 10 })
+    deps.cleanup.mockResolvedValue('Sounds good. Press enter.')
+    await runDictation(deps)
+    expect(deps.inject).toHaveBeenCalledWith('Sounds good.')
+    expect(deps.pressEnter).toHaveBeenCalledTimes(1)
+  })
+
+  it('mid-sentence "press enter" does not trigger — text pastes untouched', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    deps.transcribe.mockResolvedValue({ text: 'press enter to submit the form', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.inject).toHaveBeenCalledWith('press enter to submit the form')
+    expect(deps.pressEnter).not.toHaveBeenCalled()
+  })
+
+  it('inject failure → Enter is NEVER pressed (would submit stale text)', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    deps.transcribe.mockResolvedValue({ text: 'send it press enter', durationMs: 10 })
+    deps.inject.mockRejectedValue(new Error('Copied — paste manually'))
+    await runDictation(deps)
+    expect(deps.pressEnter).not.toHaveBeenCalled()
+    // stripped text still recorded in history (clipboard fallback path)
+    const entry = deps.appendHistory.mock.calls.at(-1)[0]
+    expect(entry.final).toBe('send it')
+  })
+
+  it('pressEnter failure is swallowed: paste already landed, pipeline still succeeds', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    deps.transcribe.mockResolvedValue({ text: 'send it press enter', durationMs: 10 })
+    deps.pressEnter.mockRejectedValue(new Error('SendInput failed'))
+    await runDictation(deps)
+    expect(deps.inject).toHaveBeenCalledWith('send it')
+    expect(deps.appendHistory).toHaveBeenCalledTimes(1)
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
+  })
+
+  it('utterance that is ONLY "press enter" skips the paste and just presses Enter', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    deps.transcribe.mockResolvedValue({ text: 'press enter', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.pressEnter).toHaveBeenCalledTimes(1)
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
+  })
+
+  it('missing pressEnter dep: phrase still stripped, dictation completes normally', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    delete (deps as Partial<typeof deps>).pressEnter // dep is optional
+    deps.transcribe.mockResolvedValue({ text: 'sounds good press enter', durationMs: 10 })
+    await runDictation(deps)
+    expect(deps.inject).toHaveBeenCalledWith('sounds good')
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
   })
 })
 

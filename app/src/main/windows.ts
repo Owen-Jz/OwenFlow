@@ -2,12 +2,9 @@ import { BrowserWindow, screen, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import appIcon from '../../resources/icon.png?asset'
-import type { PillState } from '../shared/types'
+import type { PillPosition, PillState } from '../shared/types'
 import { IPC } from '../shared/types'
-
-const PILL_WIDTH = 220 // fits the widest pill state (recording, 180px) + shadow room
-const PILL_HEIGHT = 60 // visual pill is 44px tall; extra rows for the drop shadow
-const PILL_BOTTOM_MARGIN = 64 // px above the taskbar (work area bottom)
+import { PILL_HEIGHT, PILL_WIDTH, computePillPosition } from './pill-position'
 
 const preloadPath = join(__dirname, '../preload/index.js')
 
@@ -56,12 +53,21 @@ export function getRecorderWindow(): BrowserWindow | null {
 
 let pillWindow: BrowserWindow | null = null
 
+/**
+ * Where the pill should sit, injected from index.ts (which reads settings) so
+ * this module stays dependency-clean — windows.ts must not import config.ts
+ * (config pulls electron-store + userData at module load). Defaults to
+ * bottom-center until the provider is wired, matching the settings default.
+ */
+let pillPositionProvider: () => PillPosition = () => 'bottom-center'
+
+export function setPillPositionProvider(provider: () => PillPosition): void {
+  pillPositionProvider = provider
+}
+
 function pillPosition(): { x: number; y: number } {
   const { workArea } = screen.getPrimaryDisplay()
-  return {
-    x: Math.round(workArea.x + workArea.width / 2 - PILL_WIDTH / 2),
-    y: Math.round(workArea.y + workArea.height - PILL_HEIGHT - PILL_BOTTOM_MARGIN)
-  }
+  return computePillPosition(workArea, pillPositionProvider())
 }
 
 export async function createPillWindow(): Promise<BrowserWindow> {
@@ -104,7 +110,8 @@ export function getPillWindow(): BrowserWindow | null {
 /** Push a pill state to the overlay; shows/hides the window as appropriate. */
 export function setPillState(state: PillState): void {
   if (!pillWindow || pillWindow.isDestroyed()) return
-  // reposition each time in case display layout changed
+  // reposition on every push — picks up display-layout changes AND a pill
+  // position changed from the tray (takes effect on the next pill show)
   const { x, y } = pillPosition()
   pillWindow.setPosition(x, y)
   pillWindow.webContents.send(IPC.pillState, state)
@@ -131,13 +138,16 @@ export async function openSettingsWindow(tab: 'settings' | 'history' = 'settings
   }
   settingsWindow = new BrowserWindow({
     show: false,
-    width: 760,
+    width: 900,
     height: 640,
     minWidth: 560,
     minHeight: 480,
-    title: 'OwenFlow Settings',
+    title: 'OwenFlow',
     icon: appIcon,
-    backgroundColor: '#0d0d14',
+    // Frameless: the renderer draws its own titlebar + window controls
+    // (win:minimize / win:maximize / win:close IPC).
+    frame: false,
+    backgroundColor: '#1c1c1e',
     autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,
@@ -153,4 +163,8 @@ export async function openSettingsWindow(tab: 'settings' | 'history' = 'settings
   await rendererUrl('settings').loadInto(settingsWindow)
   settingsWindow.show()
   settingsWindow.webContents.send(IPC.uiShowTab, tab)
+}
+
+export function getSettingsWindow(): BrowserWindow | null {
+  return settingsWindow
 }

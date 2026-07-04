@@ -1,6 +1,6 @@
 import { Menu, Tray, app, nativeImage } from 'electron'
 import trayIconPath from '../../resources/icon.png?asset'
-import type { FlowMode } from '../shared/types'
+import type { FlowMode, PillPosition } from '../shared/types'
 
 export interface TrayCallbacks {
   isEnabled: () => boolean
@@ -15,6 +15,9 @@ export interface TrayCallbacks {
   getSessions: () => string[]
   getActiveSession: () => string
   onSetActiveSession: (label: string) => void
+  /** Pill overlay position (tray-driven, no settings UI; applies on next pill show). */
+  getPillPosition: () => PillPosition
+  onSetPillPosition: (position: PillPosition) => void
 }
 
 const FLOW_MODE_LABELS: Array<{ value: FlowMode; label: string }> = [
@@ -22,6 +25,13 @@ const FLOW_MODE_LABELS: Array<{ value: FlowMode; label: string }> = [
   { value: 'vibe', label: 'Vibe Coding' },
   { value: 'formal', label: 'Formal' },
   { value: 'translate', label: 'Translate' }
+]
+
+const PILL_POSITION_LABELS: Array<{ value: PillPosition; label: string }> = [
+  { value: 'bottom-center', label: 'Bottom center' },
+  { value: 'top-center', label: 'Top center' },
+  { value: 'bottom-left', label: 'Bottom left' },
+  { value: 'bottom-right', label: 'Bottom right' }
 ]
 
 let tray: Tray | null = null
@@ -153,6 +163,17 @@ export function createTray(callbacks: TrayCallbacks): Tray {
             click: () => callbacks.onSetActiveSession(label)
           }))
         ]
+      },
+      {
+        // Wispr parity win: their pill is locked bottom-center. setPillState
+        // repositions on every show, so a pick here applies next pill show.
+        label: 'Pill position',
+        submenu: PILL_POSITION_LABELS.map(({ value, label }) => ({
+          label,
+          type: 'radio' as const,
+          checked: callbacks.getPillPosition() === value,
+          click: () => callbacks.onSetPillPosition(value)
+        }))
       },
       { type: 'separator' },
       { label: 'Settings…', click: callbacks.onOpenSettings },

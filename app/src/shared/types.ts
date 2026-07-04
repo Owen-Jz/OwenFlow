@@ -53,6 +53,14 @@ export interface ProviderTiming {
  */
 export type ThemeMode = 'dark' | 'light' | 'system'
 
+/**
+ * Where the pill overlay sits on the primary display (Wispr Flow locks it to
+ * bottom-center — being movable is our win). Tray-driven, no settings UI:
+ * the position is re-read on every pill show, so a change takes effect the
+ * next time the pill appears.
+ */
+export type PillPosition = 'bottom-center' | 'top-center' | 'bottom-left' | 'bottom-right'
+
 /** A per-app formatting profile, matched on focused process name. */
 export interface AppProfile {
   /** Process names (no .exe), case-insensitive, e.g. ["Code","Cursor"]. */
@@ -136,6 +144,8 @@ export interface OwenFlowSettings {
   launchOnStartup: boolean
   /** Settings-window theme (dark | light | system). */
   theme: ThemeMode
+  /** Where the pill overlay sits on screen (tray-driven; default bottom-center). */
+  pillPosition: PillPosition
 }
 
 /** Static app facts for the About section ("app:info"). */
@@ -289,6 +299,21 @@ export interface OwenFlowApi {
     /** Subscribe to TTS speak events pushed from main ("tts:speak"). Returns unsubscribe. */
     onSpeak: (cb: (text: string) => void) => () => void
   }
+  win: {
+    /** Minimize the settings window ("win:minimize"). */
+    minimize: () => void
+    /** Toggle maximize/restore on the settings window ("win:maximize"). */
+    maximize: () => void
+    /** Close the settings window ("win:close"). */
+    close: () => void
+  }
+  dictation: {
+    /**
+     * Home "Dictate now" button: minimize the settings window and start a
+     * dictation ("dictation:start"). No-op if a dictation is already active.
+     */
+    start: () => Promise<void>
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -320,5 +345,9 @@ export const IPC = {
   sidecarStatus: 'sidecar:status',
   appsDetect: 'apps:detect',
   learnPropose: 'learn:propose',
-  ttsSpeak: 'tts:speak'
+  ttsSpeak: 'tts:speak',
+  winMinimize: 'win:minimize',
+  winMaximize: 'win:maximize',
+  winClose: 'win:close',
+  dictationStart: 'dictation:start'
 } as const

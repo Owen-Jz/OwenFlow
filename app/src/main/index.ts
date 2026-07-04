@@ -14,7 +14,9 @@ import {
   createRecorderWindow,
   getPillWindow,
   getRecorderWindow,
+  getSettingsWindow,
   openSettingsWindow,
+  setPillPositionProvider,
   setPillState
 } from './windows'
 import {
@@ -56,7 +58,14 @@ import {
   stopSidecar,
   transcribe
 } from './sidecar'
-import { copySelection, getForegroundApp, inject, killInjector, warmupInjector } from './injector'
+import {
+  copySelection,
+  getForegroundApp,
+  inject,
+  killInjector,
+  pressEnter,
+  warmupInjector
+} from './injector'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
@@ -201,6 +210,35 @@ function registerIpc(): void {
   // A stray data event (e.g. stop after timeout) is dropped harmlessly:
   ipcMain.on(IPC.recorderData, () => {})
   ipcMain.on(IPC.recorderError, () => {})
+
+  // Frameless settings window: custom titlebar buttons drive the window.
+  ipcMain.on(IPC.winMinimize, () => {
+    const win = getSettingsWindow()
+    if (win && !win.isDestroyed()) win.minimize()
+  })
+  ipcMain.on(IPC.winMaximize, () => {
+    const win = getSettingsWindow()
+    if (!win || win.isDestroyed()) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.on(IPC.winClose, () => {
+    const win = getSettingsWindow()
+    if (win && !win.isDestroyed()) win.close()
+  })
+
+  // Home "Dictate now": minimize the settings window, then start a dictation.
+  // Stopping is owned by the normal hotkey state machine (hotkey.ts): in hold
+  // mode the next hotkey tap fires keydown→onStart (a guarded no-op — the
+  // pipeline is already dictating) and its keyup/gap-timer path calls
+  // stopDictation(), so a single tap stops + transcribes; holding + releasing
+  // works the same way. Escape still cancels.
+  ipcMain.handle(IPC.dictationStart, () => {
+    if (isDictationActive() || isContinuousActive() || isCommandActive()) return
+    const win = getSettingsWindow()
+    if (win && !win.isDestroyed()) win.minimize()
+    void startDictation()
+  })
 }
 
 // ─── Settings side effects ──────────────────────────────────────────────────
@@ -227,6 +265,10 @@ app.whenReady().then(async () => {
   })
 
   registerIpc()
+
+  // Wire BEFORE the pill window is created so its initial coordinates already
+  // honor a previously-saved position (windows.ts defaults to bottom-center).
+  setPillPositionProvider(() => getSettings().pillPosition)
 
   await Promise.all([createRecorderWindow(), createPillWindow()])
 
@@ -269,6 +311,7 @@ app.whenReady().then(async () => {
     },
     cleanup,
     inject,
+    pressEnter,
     getForegroundApp,
     enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt)
   })
@@ -334,6 +377,12 @@ app.whenReady().then(async () => {
     getActiveSession: () => getSettings().activeSession,
     onSetActiveSession: (label) => {
       setSettings({ activeSession: label })
+    },
+    // Pill position submenu: persist the pick; windows.ts re-reads it on
+    // every pill show, so no reposition call is needed here.
+    getPillPosition: () => getSettings().pillPosition,
+    onSetPillPosition: (position) => {
+      setSettings({ pillPosition: position })
     }
   })
 
@@ -440,6 +489,11 @@ app.whenReady().then(async () => {
       next.activeSession !== prev.activeSession ||
       next.sessionTones.join('\n') !== prev.sessionTones.join('\n')
     ) {
+      refreshTrayMenu()
+    }
+    if (next.pillPosition !== prev.pillPosition) {
+      // Keep the tray radio in sync if the setting changes outside the tray
+      // (there's no settings-UI control yet, but IPC settings:set can do it).
       refreshTrayMenu()
     }
     if (next.model !== prev.model) {

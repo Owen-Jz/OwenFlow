@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>OwenFlow — Option A · Wispr clean</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #38383b;
+    font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* ── Window artboard ─────────────────────────────────────────── */
+  .window {
+    width: 900px; height: 640px;
+    background: #1c1c1e;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 32px 90px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.35);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    color: #f5f5f7;
+  }
+
+  /* ── Titlebar ─────────────────────────────────────────────────── */
+  .titlebar {
+    height: 40px; flex: 0 0 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-left: 16px;
+  }
+  .wordmark { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: #d7d7db; }
+  .wordmark .mark {
+    width: 14px; height: 14px; border-radius: 4.5px;
+    background: linear-gradient(160deg, #f5f5f7, #a8a8ad);
+    display: inline-block;
+  }
+  .wincontrols { display: flex; height: 40px; }
+  .wc {
+    width: 44px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    color: #9a9aa0; background: transparent; border: none;
+  }
+  .wc:hover { background: rgba(255,255,255,0.07); color: #f5f5f7; }
+  .wc.close:hover { background: #e81123; color: #fff; }
+  .wc svg { display: block; }
+
+  /* ── Shell ────────────────────────────────────────────────────── */
+  .shell { flex: 1; display: flex; min-height: 0; }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  .sidebar {
+    flex: 0 0 180px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    padding: 8px 10px 14px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 8px;
+    font-size: 13px; font-weight: 450; color: #a1a1a6;
+    cursor: default;
+  }
+  .nav-item svg { flex: 0 0 auto; opacity: 0.75; }
+  .nav-item.active { background: rgba(255,255,255,0.08); color: #f5f5f7; font-weight: 550; }
+  .nav-item.active svg { opacity: 1; }
+  .nav-group {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 14px; padding: 4px 10px 6px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #67676c;
+  }
+  .nav-group svg { opacity: 0.8; }
+  .nav-sub { padding-left: 10px; }
+  .nav-sub .nav-item { font-size: 12.5px; padding: 5.5px 10px; color: #8a8a90; }
+  .sidebar .spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(255,255,255,0.055);
+    border-radius: 999px; padding: 6px 11px;
+    font-size: 10.5px; color: #9a9aa0; letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #ff453a; flex: 0 0 auto; }
+
+  /* ── Main ─────────────────────────────────────────────────────── */
+  main { flex: 1; min-width: 0; padding: 26px 32px 18px; display: flex; flex-direction: column; }
+
+  .greet-row { display: flex; align-items: baseline; justify-content: space-between; }
+  h2 { font-size: 21px; font-weight: 600; letter-spacing: -0.015em; }
+  .date { font-size: 12.5px; color: #8a8a90; }
+
+  .chip-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .chip {
+    font-size: 12px; font-weight: 500; color: #a1a1a6;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 999px; padding: 5px 13px;
+  }
+  .chip.active { background: rgba(255,255,255,0.11); border-color: transparent; color: #f5f5f7; }
+  .chip-sep { width: 1px; height: 16px; background: rgba(255,255,255,0.09); margin: 0 4px; }
+  .chip.meta { color: #8a8a90; }
+  .chip.meta b { color: #d7d7db; font-weight: 550; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 22px; }
+  .stat {
+    background: #26262a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px; padding: 16px 18px 15px;
+  }
+  .stat .v { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 14px; font-weight: 500; color: #a1a1a6; margin-left: 2px; }
+  .stat .l { font-size: 11.5px; color: #8a8a90; margin-top: 4px; }
+
+  /* recent */
+  .section-title { font-size: 13px; font-weight: 600; color: #d7d7db; margin: 26px 0 10px; }
+  .recent {
+    background: #26262a;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+  }
+  .row + .row { border-top: 1px solid rgba(255,255,255,0.055); }
+  .app {
+    width: 26px; height: 26px; flex: 0 0 auto;
+    border-radius: 7px; background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.72);
+  }
+  .row .body { flex: 1; min-width: 0; }
+  .row .text { font-size: 13px; color: #e8e8ec; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .meta { font-size: 11px; color: #7c7c82; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .copy { flex: 0 0 auto; color: #6d6d73; display: flex; }
+
+  /* footer */
+  .hint { margin-top: auto; padding-top: 16px; text-align: center; font-size: 11.5px; color: #7c7c82; }
+  .kbd {
+    display: inline-block; padding: 1px 6px 2px; margin: 0 1px;
+    border: 1px solid rgba(255,255,255,0.12); border-bottom-width: 2px;
+    border-radius: 5px; font-size: 10.5px; color: #a1a1a6;
+    background: rgba(255,255,255,0.04);
+  }
+</style>
+</head>
+<body>
+<div class="window">
+
+  <div class="titlebar">
+    <div class="wordmark"><span class="mark"></span>OwenFlow</div>
+    <div class="wincontrols">
+      <button class="wc" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc" aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc close" aria-label="Close"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1"/></svg></button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="nav-item active">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+        Home
+      </div>
+      <div class="nav-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>
+        Modes
+      </div>
+      <div class="nav-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13"/></svg>
+        Dictionary
+      </div>
+      <div class="nav-item">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        History
+      </div>
+
+      <div class="nav-group">
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5 5 6.5l2.5-3"/></svg>
+        Advanced
+      </div>
+      <div class="nav-sub">
+        <div class="nav-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
+          Apps
+        </div>
+        <div class="nav-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l4 4-4 4M11 17h8"/></svg>
+          Command
+        </div>
+        <div class="nav-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>
+          ZEAL
+        </div>
+        <div class="nav-item">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          Digest
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="status-pill"><span class="dot"></span>whisper large-v3-turbo · ready</div>
+    </aside>
+
+    <main>
+      <div class="greet-row">
+        <h2>Good evening, Owen</h2>
+        <span class="date">Friday, July 4</span>
+      </div>
+
+      <div class="chip-row">
+        <span class="chip">Normal</span>
+        <span class="chip active">Vibe</span>
+        <span class="chip">Formal</span>
+        <span class="chip">Translate</span>
+        <span class="chip-sep"></span>
+        <span class="chip meta">Cleanup&nbsp;·&nbsp;<b>Medium</b></span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="v">14</div><div class="l">Today’s dictations</div></div>
+        <div class="stat"><div class="v">1,930</div><div class="l">Words</div></div>
+        <div class="stat"><div class="v">23<small>min</small></div><div class="l">Time saved</div></div>
+        <div class="stat"><div class="v">6<small>days</small></div><div class="l">Streak</div></div>
+      </div>
+
+      <div class="section-title">Recent dictations</div>
+      <div class="recent">
+        <div class="row">
+          <div class="app"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.5L15 19l-3 1.4-2-6.6L5 17V3z"/></svg></div>
+          <div class="body">
+            <div class="text">Hey, can you push the fix to staging and ping me when the build is green?</div>
+            <div class="meta">Cursor · 4m ago</div>
+          </div>
+          <span class="copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M9 4v16M15 4v16M4 9h16M4 15h16"/></svg></div>
+          <div class="body">
+            <div class="text">Sounds good — let’s move standup to 10:30 tomorrow, I have a call with the Nomba team.</div>
+            <div class="meta">Slack · 22m ago</div>
+          </div>
+          <span class="copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.6"/><path d="M12 3v5.4M4.2 16.5l4.7-2.7M19.8 16.5l-4.7-2.7"/></svg></div>
+          <div class="body">
+            <div class="text">Summarize this thread and draft a reply saying we’ll ship the invoice flow by Friday.</div>
+            <div class="meta">Chrome · 1h ago</div>
+          </div>
+          <span class="copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 8-6 1.5L15 19l-3 1.4-2-6.6L5 17V3z"/></svg></div>
+          <div class="body">
+            <div class="text">Add a TODO: refactor the sidecar restart logic so it retries with backoff.</div>
+            <div class="meta">Cursor · 2h ago</div>
+          </div>
+          <span class="copy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+      </div>
+
+      <div class="hint">Hold <span class="kbd">Ctrl</span><span class="kbd">Win</span> to dictate&nbsp;&nbsp;·&nbsp;&nbsp;double-tap to lock</div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

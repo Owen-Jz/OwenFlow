@@ -139,6 +139,24 @@ describe('config continuous mode', () => {
   })
 })
 
+describe('config pill position', () => {
+  it('defaults pillPosition to bottom-center (Wispr-compatible default)', () => {
+    expect(DEFAULT_SETTINGS.pillPosition).toBe('bottom-center')
+    expect(getSettings().pillPosition).toBe('bottom-center')
+  })
+
+  it('declares the pillPosition schema with all four placements and bottom-center default', () => {
+    const schema = captured.options?.schema as Record<string, { enum?: string[]; default?: string }>
+    expect(schema.pillPosition.enum).toEqual([
+      'bottom-center',
+      'top-center',
+      'bottom-left',
+      'bottom-right'
+    ])
+    expect(schema.pillPosition.default).toBe('bottom-center')
+  })
+})
+
 describe('config ZEAL voice client', () => {
   it('defaults zealEndpoint to the VPS /api/voice URL, zealApiKey empty, zealSpeakReplies true', () => {
     expect(DEFAULT_SETTINGS.zealEndpoint).toContain('/api/voice')

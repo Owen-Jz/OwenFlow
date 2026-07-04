@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>OwenFlow — Option C · Graphite editorial</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #3a3937;
+    font-family: -apple-system, "Segoe UI Variable Display", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* ── Window artboard ─────────────────────────────────────────── */
+  .window {
+    width: 900px; height: 640px;
+    background: #201e1c;
+    border-radius: 12px;
+    border: 1px solid rgba(255,252,245,0.08);
+    box-shadow: 0 34px 96px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.35);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    color: #f2efeb;
+  }
+
+  /* ── Titlebar ─────────────────────────────────────────────────── */
+  .titlebar {
+    height: 42px; flex: 0 0 42px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-left: 18px;
+  }
+  .wordmark { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #b7b1a9; }
+  .wordmark b { color: #f2efeb; font-weight: 600; }
+  .wincontrols { display: flex; height: 42px; }
+  .wc {
+    width: 44px; height: 42px;
+    display: flex; align-items: center; justify-content: center;
+    color: #928c84; background: transparent; border: none;
+  }
+  .wc:hover { background: rgba(255,252,245,0.06); color: #f2efeb; }
+  .wc.close:hover { background: #e81123; color: #fff; }
+  .wc svg { display: block; }
+
+  /* ── Shell ────────────────────────────────────────────────────── */
+  .shell { flex: 1; display: flex; min-height: 0; }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  .sidebar {
+    flex: 0 0 180px;
+    border-right: 1px solid rgba(255,252,245,0.06);
+    padding: 12px 12px 16px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 8px;
+    font-size: 13px; font-weight: 440; color: #9b948b;
+    cursor: default;
+  }
+  .nav-item .mdot { width: 5px; height: 5px; border-radius: 50%; background: transparent; flex: 0 0 auto; }
+  .nav-item.active { color: #f2efeb; font-weight: 560; background: rgba(255,252,245,0.05); }
+  .nav-item.active .mdot { background: #ff2d3a; }
+  .nav-group {
+    margin-top: 18px; padding: 0 10px 7px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.16em;
+    text-transform: uppercase; color: #6b665f;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .nav-group::after { content: ""; flex: 1; height: 1px; background: rgba(255,252,245,0.06); }
+  .nav-sub .nav-item { font-size: 12.5px; padding: 5.5px 10px; color: #857f76; }
+  .sidebar .spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    border: 1px solid rgba(255,252,245,0.08);
+    border-radius: 999px; padding: 6px 11px;
+    font-size: 10.5px; color: #9b948b; letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #3fbf62; flex: 0 0 auto; }
+
+  /* ── Main ─────────────────────────────────────────────────────── */
+  main { flex: 1; min-width: 0; padding: 28px 36px 16px; display: flex; flex-direction: column; }
+
+  .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #857f76; }
+  h2 { font-size: 27px; font-weight: 350; letter-spacing: -0.022em; margin-top: 5px; }
+  h2 b { font-weight: 620; }
+
+  .control-row { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+  .segmented {
+    display: flex; align-items: stretch;
+    background: rgba(255,252,245,0.05);
+    border: 1px solid rgba(255,252,245,0.06);
+    border-radius: 9px; padding: 2px;
+  }
+  .seg {
+    font-size: 12px; font-weight: 480; color: #9b948b;
+    padding: 5px 14px; border-radius: 7px;
+  }
+  .seg.active {
+    background: #35322e; color: #f2efeb; font-weight: 560;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,252,245,0.05);
+  }
+  .cleanup {
+    font-size: 11.5px; color: #857f76;
+    border: 1px solid rgba(255,252,245,0.08);
+    border-radius: 999px; padding: 6px 13px;
+  }
+  .cleanup b { color: #d9d4cc; font-weight: 560; }
+
+  /* editorial stats */
+  .stats {
+    display: flex; align-items: stretch;
+    margin-top: 26px;
+    border-top: 1px solid rgba(255,252,245,0.07);
+    border-bottom: 1px solid rgba(255,252,245,0.07);
+    padding: 18px 0 16px;
+  }
+  .stat { flex: 1; padding: 0 22px; }
+  .stat:first-child { padding-left: 2px; }
+  .stat + .stat { border-left: 1px solid rgba(255,252,245,0.06); }
+  .stat .v { font-size: 38px; font-weight: 220; letter-spacing: -0.03em; line-height: 1; color: #f7f4ef; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 15px; font-weight: 400; color: #9b948b; letter-spacing: 0; margin-left: 3px; }
+  .stat .l { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #857f76; margin-top: 9px; }
+
+  /* timeline */
+  .section-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: #857f76; margin: 24px 0 14px; }
+  .timeline { position: relative; }
+  .timeline::before {
+    content: ""; position: absolute; left: 63px; top: 6px; bottom: 6px;
+    width: 1px; background: rgba(255,252,245,0.08);
+  }
+  .t-row { display: flex; align-items: flex-start; gap: 0; padding: 7px 0; position: relative; }
+  .t-time {
+    flex: 0 0 50px; text-align: right;
+    font-size: 10.5px; color: #7c766d; padding-top: 2px;
+    font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  }
+  .t-dot {
+    flex: 0 0 27px; display: flex; justify-content: center; padding-top: 5px;
+    position: relative; z-index: 1;
+  }
+  .t-dot span {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #4d4841; border: 1.5px solid #201e1c;
+    box-shadow: 0 0 0 1px rgba(255,252,245,0.14);
+  }
+  .t-body { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 10px; }
+  .t-text-wrap { flex: 1; min-width: 0; }
+  .t-text { font-size: 13px; color: #e9e5df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
+  .t-meta { font-size: 10.5px; color: #7c766d; margin-top: 2px; letter-spacing: 0.03em; }
+  .t-meta b { color: #a8a29a; font-weight: 550; }
+  .copy { flex: 0 0 auto; color: #6b665f; display: flex; padding-top: 3px; }
+
+  /* footer */
+  .hint { margin-top: auto; padding-top: 14px; text-align: center; font-size: 11px; color: #7c766d; letter-spacing: 0.02em; }
+  .kbd {
+    display: inline-block; padding: 1px 6px 2px; margin: 0 1px;
+    border: 1px solid rgba(255,252,245,0.12); border-bottom-width: 2px;
+    border-radius: 5px; font-size: 10px; color: #a8a29a;
+    background: rgba(255,252,245,0.03);
+  }
+</style>
+</head>
+<body>
+<div class="window">
+
+  <div class="titlebar">
+    <div class="wordmark"><b>Owen</b>Flow</div>
+    <div class="wincontrols">
+      <button class="wc" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc" aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc close" aria-label="Close"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1"/></svg></button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="nav-item active"><span class="mdot"></span>Home</div>
+      <div class="nav-item"><span class="mdot"></span>Modes</div>
+      <div class="nav-item"><span class="mdot"></span>Dictionary</div>
+      <div class="nav-item"><span class="mdot"></span>History</div>
+
+      <div class="nav-group">Advanced</div>
+      <div class="nav-sub">
+        <div class="nav-item"><span class="mdot"></span>Apps</div>
+        <div class="nav-item"><span class="mdot"></span>Command</div>
+        <div class="nav-item"><span class="mdot"></span>ZEAL</div>
+        <div class="nav-item"><span class="mdot"></span>Digest</div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="status-pill"><span class="dot"></span>whisper large-v3-turbo · ready</div>
+    </aside>
+
+    <main>
+      <div class="eyebrow">Friday · July 4</div>
+      <h2>Good evening, <b>Owen</b></h2>
+
+      <div class="control-row">
+        <div class="segmented">
+          <span class="seg">Normal</span>
+          <span class="seg active">Vibe</span>
+          <span class="seg">Formal</span>
+          <span class="seg">Translate</span>
+        </div>
+        <span class="cleanup">Cleanup — <b>Medium</b></span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="v">14</div><div class="l">Dictations today</div></div>
+        <div class="stat"><div class="v">1,930</div><div class="l">Words</div></div>
+        <div class="stat"><div class="v">23<small>min</small></div><div class="l">Time saved</div></div>
+        <div class="stat"><div class="v">6<small>days</small></div><div class="l">Streak</div></div>
+      </div>
+
+      <div class="section-title">Recent dictations</div>
+      <div class="timeline">
+        <div class="t-row">
+          <div class="t-time">4m</div>
+          <div class="t-dot"><span></span></div>
+          <div class="t-body">
+            <div class="t-text-wrap">
+              <div class="t-text">Hey, can you push the fix to staging and ping me when the build is green?</div>
+              <div class="t-meta">into <b>Cursor</b></div>
+            </div>
+            <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+          </div>
+        </div>
+        <div class="t-row">
+          <div class="t-time">22m</div>
+          <div class="t-dot"><span></span></div>
+          <div class="t-body">
+            <div class="t-text-wrap">
+              <div class="t-text">Sounds good — let’s move standup to 10:30 tomorrow, I have a call with the Nomba team.</div>
+              <div class="t-meta">into <b>Slack</b></div>
+            </div>
+            <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+          </div>
+        </div>
+        <div class="t-row">
+          <div class="t-time">1h</div>
+          <div class="t-dot"><span></span></div>
+          <div class="t-body">
+            <div class="t-text-wrap">
+              <div class="t-text">Summarize this thread and draft a reply saying we’ll ship the invoice flow by Friday.</div>
+              <div class="t-meta">into <b>Chrome</b></div>
+            </div>
+            <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+          </div>
+        </div>
+        <div class="t-row">
+          <div class="t-time">2h</div>
+          <div class="t-dot"><span></span></div>
+          <div class="t-body">
+            <div class="t-text-wrap">
+              <div class="t-text">Add a TODO: refactor the sidecar restart logic so it retries with backoff.</div>
+              <div class="t-meta">into <b>Cursor</b></div>
+            </div>
+            <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">Hold <span class="kbd">Ctrl</span><span class="kbd">Win</span> to dictate&nbsp;&nbsp;·&nbsp;&nbsp;double-tap to lock</div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

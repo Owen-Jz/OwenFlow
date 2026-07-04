@@ -15,6 +15,7 @@ import { activeSessionMode, parseSessionTones } from './sessions'
 import { matchProfile, applyProfileTransforms, profilePromptRule, profileMode } from './profiles'
 import { resolveNormalIntensity } from './cleanup'
 import { isCommandActive } from './command-channel'
+import { detectPressEnter } from './press-enter'
 
 // ─── Dependency contract ─────────────────────────────────────────────────────
 
@@ -44,6 +45,8 @@ export interface PipelineDeps {
   cleanup?: (raw: string, settings: OwenFlowSettings, extraSystem?: string) => Promise<string>
   /** injector.ts — clipboard-swap paste into the focused app. */
   inject?: (text: string) => Promise<void>
+  /** injector.ts — single Enter keystroke for the "press enter" voice command. */
+  pressEnter?: () => Promise<void>
   /** injector.ts — focused process name for app profiles. */
   getForegroundApp?: () => Promise<string | null>
   /** transcribe-queue.ts — queue a failed dictation for retry. */
@@ -219,21 +222,45 @@ export async function stopDictation(): Promise<void> {
   // 4. Dictionary "wrong=>right" replacements, then profile-specific transforms.
   const { replacements } = parseDictionary(settings.dictionary)
   const replaced = applyReplacements(cleaned, replacements)
-  const final = profile ? applyProfileTransforms(replaced, profile) : replaced
+  const transformed = profile ? applyProfileTransforms(replaced, profile) : replaced
 
-  // 5. Inject into the focused app.
+  // 4b. "Press enter" voice command: a TRAILING "press enter" / "hit enter"
+  //     is stripped from the paste (and from history) and turned into an
+  //     Enter keystroke AFTER the successful inject — so "sounds good press
+  //     enter" sends the Slack/AI-chat message hands-free. Detected on the
+  //     fully-transformed text because cleanup often reshapes the phrase
+  //     ("… Press enter.") and dictionary/profile edits come first.
+  const { text: final, pressEnter } = detectPressEnter(transformed)
+
+  // 5. Inject into the focused app. An utterance that was ONLY the command
+  //    ("press enter") leaves nothing to paste — skip the inject and go
+  //    straight to the keystroke.
   try {
     if (!deps.inject) throw new Error('Injector unavailable')
-    await deps.inject(final)
+    if (final) await deps.inject(final)
   } catch (err) {
     if (gen !== generation) return
     processing = false
     // Text is left on the clipboard by the injector — still record history.
+    // NOTE: pressEnter is deliberately NOT fired here — pressing Enter after
+    // a failed paste would submit whatever half-typed text the app holds.
     appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
     failPill(err instanceof Error ? err.message : 'Paste failed')
     return
   }
   if (gen !== generation) return
+
+  // 5b. Enter keystroke, only after the paste landed (never before, never on
+  //     inject failure). A missed Enter must not fail the dictation — the
+  //     text is already pasted — so any error is swallowed.
+  if (pressEnter && deps.pressEnter) {
+    try {
+      await deps.pressEnter()
+    } catch (err) {
+      console.warn('[pipeline] press-enter failed:', err instanceof Error ? err.message : err)
+    }
+    if (gen !== generation) return
+  }
 
   processing = false
   appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)

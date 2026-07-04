@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>OwenFlow — Option B · Charcoal + single red line</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #39393c;
+    font-family: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* ── Window artboard ─────────────────────────────────────────── */
+  .window {
+    width: 900px; height: 640px;
+    background: #1b1b1d;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.09);
+    box-shadow: 0 30px 84px rgba(0,0,0,0.58), 0 2px 8px rgba(0,0,0,0.35);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    color: #f2f2f4;
+  }
+
+  /* ── Titlebar ─────────────────────────────────────────────────── */
+  .titlebar {
+    height: 38px; flex: 0 0 38px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-left: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.055);
+  }
+  .wordmark { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; letter-spacing: 0.02em; color: #cfcfd4; }
+  .wordmark .mark { width: 13px; height: 13px; border-radius: 4px; background: #ff2d3a; display: inline-block; }
+  .wincontrols { display: flex; height: 38px; }
+  .wc {
+    width: 44px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    color: #96969c; background: transparent; border: none;
+  }
+  .wc:hover { background: rgba(255,255,255,0.07); color: #f2f2f4; }
+  .wc.close:hover { background: #e81123; color: #fff; }
+  .wc svg { display: block; }
+
+  /* ── Shell ────────────────────────────────────────────────────── */
+  .shell { flex: 1; display: flex; min-height: 0; }
+
+  /* ── Sidebar ──────────────────────────────────────────────────── */
+  .sidebar {
+    flex: 0 0 176px;
+    background: #18181a;
+    border-right: 1px solid rgba(255,255,255,0.055);
+    padding: 10px 8px 12px;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .nav-item {
+    position: relative;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; border-radius: 6px;
+    font-size: 12.5px; font-weight: 470; color: #9c9ca2;
+    cursor: default;
+  }
+  .nav-item svg { flex: 0 0 auto; opacity: 0.72; }
+  .nav-item.active { background: rgba(255,255,255,0.06); color: #f2f2f4; font-weight: 580; }
+  .nav-item.active svg { opacity: 1; }
+  .nav-item.active::before {
+    content: ""; position: absolute; left: 0; top: 5px; bottom: 5px;
+    width: 2px; border-radius: 2px; background: #ff2d3a;
+  }
+  .nav-group {
+    display: flex; align-items: center; gap: 5px;
+    margin-top: 12px; padding: 3px 10px 5px;
+    font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em;
+    text-transform: uppercase; color: #616167;
+  }
+  .nav-sub .nav-item { font-size: 12px; padding: 5px 10px 5px 20px; color: #85858b; }
+  .sidebar .spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 999px; padding: 5px 10px;
+    font-size: 10px; color: #96969c; letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .status-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: #34c759; flex: 0 0 auto; }
+
+  /* ── Main ─────────────────────────────────────────────────────── */
+  main { flex: 1; min-width: 0; padding: 20px 26px 14px; display: flex; flex-direction: column; }
+
+  .greet-row { display: flex; align-items: center; justify-content: space-between; }
+  .greet h2 { font-size: 19px; font-weight: 650; letter-spacing: -0.015em; }
+  .greet .date { font-size: 11.5px; color: #85858b; margin-top: 2px; }
+  .cta {
+    display: flex; align-items: center; gap: 7px;
+    background: #ff2d3a; color: #fff; border: none;
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 8px 15px; border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  }
+  .cta svg { display: block; }
+
+  .chip-row { display: flex; align-items: center; gap: 6px; margin-top: 15px; }
+  .chip {
+    font-size: 11.5px; font-weight: 520; color: #9c9ca2;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 7px; padding: 4px 11px;
+  }
+  .chip.active { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.14); color: #f2f2f4; }
+  .chip-sep { width: 1px; height: 14px; background: rgba(255,255,255,0.09); margin: 0 4px; }
+  .chip.meta { color: #85858b; border-style: dashed; }
+  .chip.meta b { color: #cfcfd4; font-weight: 560; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 17px; }
+  .stat {
+    background: #232326;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 12px 14px 11px;
+  }
+  .stat .v { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; color: #ff453a; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 12px; font-weight: 550; color: #96969c; margin-left: 2px; }
+  .stat .l { font-size: 11px; color: #85858b; margin-top: 3px; }
+
+  /* recent */
+  .section-row { display: flex; align-items: baseline; justify-content: space-between; margin: 19px 0 8px; }
+  .section-title { font-size: 12.5px; font-weight: 650; color: #cfcfd4; }
+  .section-link { font-size: 11px; color: #85858b; }
+  .recent {
+    background: #202023;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9.5px 13px; }
+  .row + .row { border-top: 1px solid rgba(255,255,255,0.05); }
+  .app {
+    width: 23px; height: 23px; flex: 0 0 auto;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.7);
+    font-size: 10px; font-weight: 700;
+  }
+  .row .body { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+  .row .text { flex: 1; min-width: 0; font-size: 12.5px; color: #e4e4e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .meta { flex: 0 0 auto; font-size: 10.5px; color: #77777d; font-variant-numeric: tabular-nums; }
+  .copy { flex: 0 0 auto; color: #66666c; display: flex; }
+
+  /* footer */
+  .hint { margin-top: auto; padding-top: 12px; text-align: center; font-size: 11px; color: #77777d; }
+  .kbd {
+    display: inline-block; padding: 1px 5px 2px; margin: 0 1px;
+    border: 1px solid rgba(255,255,255,0.12); border-bottom-width: 2px;
+    border-radius: 4px; font-size: 10px; color: #9c9ca2;
+    background: rgba(255,255,255,0.04);
+  }
+</style>
+</head>
+<body>
+<div class="window">
+
+  <div class="titlebar">
+    <div class="wordmark"><span class="mark"></span>OwenFlow</div>
+    <div class="wincontrols">
+      <button class="wc" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc" aria-label="Maximize"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"/></svg></button>
+      <button class="wc close" aria-label="Close"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1"/></svg></button>
+    </div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="nav-item active">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+        Home
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg>
+        Modes
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13"/></svg>
+        Dictionary
+      </div>
+      <div class="nav-item">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        History
+      </div>
+
+      <div class="nav-group">
+        <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5 5 6.5l2.5-3"/></svg>
+        Advanced
+      </div>
+      <div class="nav-sub">
+        <div class="nav-item">Apps</div>
+        <div class="nav-item">Command</div>
+        <div class="nav-item">ZEAL</div>
+        <div class="nav-item">Digest</div>
+      </div>
+
+      <div class="spacer"></div>
+      <div class="status-pill"><span class="dot"></span>whisper large-v3-turbo · ready</div>
+    </aside>
+
+    <main>
+      <div class="greet-row">
+        <div class="greet">
+          <h2>Good evening, Owen</h2>
+          <div class="date">Friday, July 4 · 6 apps connected</div>
+        </div>
+        <button class="cta">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          Dictate now
+        </button>
+      </div>
+
+      <div class="chip-row">
+        <span class="chip">Normal</span>
+        <span class="chip active">Vibe</span>
+        <span class="chip">Formal</span>
+        <span class="chip">Translate</span>
+        <span class="chip-sep"></span>
+        <span class="chip meta">Cleanup&nbsp;·&nbsp;<b>Medium</b></span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="v">14</div><div class="l">Today’s dictations</div></div>
+        <div class="stat"><div class="v">1,930</div><div class="l">Words</div></div>
+        <div class="stat"><div class="v">23<small>min</small></div><div class="l">Time saved</div></div>
+        <div class="stat"><div class="v">6<small>days</small></div><div class="l">Streak</div></div>
+      </div>
+
+      <div class="section-row">
+        <div class="section-title">Recent dictations</div>
+        <div class="section-link">View history →</div>
+      </div>
+      <div class="recent">
+        <div class="row">
+          <div class="app">Cu</div>
+          <div class="body">
+            <div class="text">Hey, can you push the fix to staging and ping me when the build is green?</div>
+            <div class="meta">Cursor · 4m</div>
+          </div>
+          <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app">Sl</div>
+          <div class="body">
+            <div class="text">Sounds good — let’s move standup to 10:30 tomorrow, I have a call with the Nomba team.</div>
+            <div class="meta">Slack · 22m</div>
+          </div>
+          <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app">Ch</div>
+          <div class="body">
+            <div class="text">Summarize this thread and draft a reply saying we’ll ship the invoice flow by Friday.</div>
+            <div class="meta">Chrome · 1h</div>
+          </div>
+          <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+        <div class="row">
+          <div class="app">Cu</div>
+          <div class="body">
+            <div class="text">Add a TODO: refactor the sidecar restart logic so it retries with backoff.</div>
+            <div class="meta">Cursor · 2h</div>
+          </div>
+          <span class="copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 4.5h-9a2 2 0 0 0-2 2v9"/></svg></span>
+        </div>
+      </div>
+
+      <div class="hint">Hold <span class="kbd">Ctrl</span><span class="kbd">Win</span> to dictate&nbsp;&nbsp;·&nbsp;&nbsp;double-tap to lock</div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

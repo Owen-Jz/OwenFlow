@@ -37,7 +37,8 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   zealApiKey: '',
   zealSpeakReplies: true,
   launchOnStartup: false,
-  theme: 'dark'
+  theme: 'dark',
+  pillPosition: 'bottom-center'
 }
 
 // Captured BEFORE the store is instantiated (electron-store may write the
@@ -116,7 +117,12 @@ const store = new Store<OwenFlowSettings>({
     zealApiKey: { type: 'string', default: '' },
     zealSpeakReplies: { type: 'boolean', default: true },
     launchOnStartup: { type: 'boolean', default: false },
-    theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
+    theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' },
+    pillPosition: {
+      type: 'string',
+      enum: ['bottom-center', 'top-center', 'bottom-left', 'bottom-right'],
+      default: 'bottom-center'
+    }
   }
 })
 

@@ -10,3 +10,4 @@ venv/
 *.wav
 *.mp3
 .env
+.gstack/
