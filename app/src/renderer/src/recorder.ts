@@ -6,6 +6,14 @@
  * On "recorder:stop": encodes a 16-bit PCM WAV and replies via
  * "recorder:data" with the WAV as an ArrayBuffer.
  *
+ * Segment streaming (BOTH modes): natural pauses flush the audio captured so
+ * far as "recorder:segment" WAVs so main can transcribe them while the user
+ * is still talking. Continuous mode pastes per segment (continuous-channel);
+ * normal hold mode only PRE-transcribes them (pipeline/pretranscribe) and the
+ * final "recorder:data" reply carries just the remainder since the last
+ * flush — so stop→paste no longer pays for transcribing the whole take.
+ * Normal mode uses a min-segment floor so tiny dictations stay one piece.
+ *
  * Warm-mic design (anti word-clipping): getUserMedia + AudioContext setup
  * takes 200-500ms, which used to eat the first word of every dictation. The
  * stream is now acquired on first use and kept WARM for WARM_IDLE_MS after a
@@ -26,6 +34,14 @@ const LEVEL_INTERVAL_MS = 50
 const SILENCE_MS = 700
 const MAX_SEGMENT_MS = 15000
 const SPEECH_LEVEL = 0.06
+/**
+ * Normal (one-shot) mode only: don't pause-flush a segment shorter than this.
+ * Short dictations gain nothing from pre-transcription (the final transcribe
+ * is already fast) and every extra boundary is a small accuracy risk — so
+ * only rambles long enough to amortize it get segmented. Continuous mode
+ * keeps its original floorless behavior.
+ */
+const NORMAL_MIN_SEGMENT_MS = 3000
 
 /** Rolling pre-roll kept while the warm stream is idle (~350ms of audio). */
 const PREROLL_MS = 350
@@ -204,9 +220,14 @@ function finalizeCapture(): void {
     flushSegment()
     window.owenflow.recorder.sendDone()
   } else {
+    // Normal mode: recorder:data carries the FINAL remainder — everything
+    // captured since the last pause-flush (or the whole take when no segment
+    // was flushed, i.e. short dictations behave exactly as before). Renderer
+    // IPC is ordered, so main always sees every recorder:segment before this.
     const sampleRate = audioContext?.sampleRate ?? TARGET_SAMPLE_RATE
     const samples = concat(chunks)
     chunks = []
+    resetSeg()
     window.owenflow.recorder.sendData(encodeWav(samples, sampleRate))
   }
 
@@ -238,19 +259,20 @@ function startLevelEmitter(analyser: AnalyserNode): void {
       frame[i] = Math.round((sum / (to - from) / 255) * 1000) / 1000
     }
     window.owenflow.recorder.sendLevel(frame)
-    if (continuous) {
-      const peak = Math.max(...frame)
-      const speaking = peak >= SPEECH_LEVEL
-      seg.segmentMs += LEVEL_INTERVAL_MS
-      if (speaking) {
-        seg.hasSpeech = true
-        seg.silenceMs = 0
-      } else {
-        seg.silenceMs += LEVEL_INTERVAL_MS
-      }
-      if (shouldFlush(seg, SILENCE_MS, MAX_SEGMENT_MS)) {
-        flushSegment()
-      }
+    // Pause segmentation runs in BOTH modes now: continuous streams segments
+    // for per-segment paste, normal streams them for background
+    // pre-transcription (normal adds the min-segment floor — see the const).
+    const peak = Math.max(...frame)
+    const speaking = peak >= SPEECH_LEVEL
+    seg.segmentMs += LEVEL_INTERVAL_MS
+    if (speaking) {
+      seg.hasSpeech = true
+      seg.silenceMs = 0
+    } else {
+      seg.silenceMs += LEVEL_INTERVAL_MS
+    }
+    if (shouldFlush(seg, SILENCE_MS, MAX_SEGMENT_MS, continuous ? 0 : NORMAL_MIN_SEGMENT_MS)) {
+      flushSegment()
     }
   }, LEVEL_INTERVAL_MS)
 }

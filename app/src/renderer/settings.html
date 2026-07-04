@@ -1334,11 +1334,21 @@
                 <div class="row" id="groq-model-row">
                   <label class="title" for="f-groq-model">
                     Groq model
-                    <span class="hint">70b = best balance; 8b-instant = fastest</span>
+                    <span class="hint">Vibe / Formal / Translate &amp; commands — the 70b's reasoning suits the rewrites</span>
                   </label>
                   <select id="f-groq-model">
                     <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
                     <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                  </select>
+                </div>
+                <div class="row" id="groq-model-fast-row">
+                  <label class="title" for="f-groq-model-fast">
+                    Fast model (Normal cleanup)
+                    <span class="hint">Normal cleanup &amp; digest — 8b-instant matches 70b quality at ~330ms vs ~780ms</span>
+                  </label>
+                  <select id="f-groq-model-fast">
+                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
                   </select>
                 </div>
                 <div class="row" id="minimax-key-row">

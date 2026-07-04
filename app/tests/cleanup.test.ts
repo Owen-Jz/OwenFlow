@@ -15,6 +15,7 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   minimaxGroupId: '',
   groqApiKey: 'groq-key',
   groqModel: 'llama-3.3-70b-versatile',
+  groqModelFast: 'llama-3.1-8b-instant',
   dictionary: [],
   snippets: [],
   translateTarget: 'English',
@@ -350,24 +351,27 @@ describe('cleanup', () => {
   })
 
   describe('provider selection', () => {
-    it('groq provider hits the Groq endpoint with the groq key and model', async () => {
+    it('groq provider hits the Groq endpoint with the groq key (normal mode → fast model)', async () => {
       fetchMock.mockResolvedValue(okResponse('Cleaned.'))
       await cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
       const [url, init] = fetchMock.mock.calls[0]
       expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
       expect(init.headers.Authorization).toBe('Bearer gk')
-      expect(JSON.parse(init.body).model).toBe('llama-3.3-70b-versatile')
+      expect(JSON.parse(init.body).model).toBe('llama-3.1-8b-instant')
     })
 
-    it('groq uses the configured groqModel when set', async () => {
+    it('groq uses the configured groqModel when set (vibe = flagship path)', async () => {
       fetchMock.mockResolvedValue(okResponse('Cleaned.'))
-      await cleanup(RAW, settings({ cleanupProvider: 'groq', groqModel: 'llama-3.1-8b-instant' }))
+      await cleanup(
+        RAW,
+        settings({ flowMode: 'vibe', cleanupProvider: 'groq', groqModel: 'llama-3.1-8b-instant' })
+      )
       expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('llama-3.1-8b-instant')
     })
 
-    it('groq falls back to the default model when groqModel is empty', async () => {
+    it('groq falls back to the default flagship model when groqModel is empty', async () => {
       fetchMock.mockResolvedValue(okResponse('Cleaned.'))
-      await cleanup(RAW, settings({ cleanupProvider: 'groq', groqModel: '' }))
+      await cleanup(RAW, settings({ flowMode: 'vibe', cleanupProvider: 'groq', groqModel: '' }))
       expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('llama-3.3-70b-versatile')
     })
 
@@ -417,6 +421,71 @@ describe('cleanup', () => {
       expect(url).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
       expect(init.headers.Authorization).toBe('Bearer test-key')
       expect(JSON.parse(init.body).model).toBe('MiniMax-M2.5')
+    })
+  })
+
+  // Benchmark 2026-07-04: 8b-instant does normal cleanup at ~330ms with 70b
+  // quality; structural rewrites + command edits keep the 70b's reasoning.
+  describe('groq model routing (fast vs flagship)', () => {
+    const groq = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =>
+      settings({
+        cleanupProvider: 'groq',
+        groqModel: 'llama-3.3-70b-versatile',
+        groqModelFast: 'llama-3.1-8b-instant',
+        ...patch
+      })
+    const sentModel = (): string => JSON.parse(fetchMock.mock.calls[0][1].body).model
+
+    it('normal-mode cleanup uses groqModelFast', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, groq({ flowMode: 'normal' }))
+      expect(sentModel()).toBe('llama-3.1-8b-instant')
+    })
+
+    it('vibe, formal and translate use the flagship groqModel', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      for (const flowMode of ['vibe', 'formal', 'translate'] as const) {
+        fetchMock.mockClear()
+        await cleanup(RAW, groq({ flowMode }))
+        expect(sentModel()).toBe('llama-3.3-70b-versatile')
+      }
+    })
+
+    it('summarize (digest theme line) uses groqModelFast', async () => {
+      fetchMock.mockResolvedValue(okResponse('themes'))
+      await summarize('a\nb', groq())
+      expect(sentModel()).toBe('llama-3.1-8b-instant')
+    })
+
+    it('runCommand (arbitrary edit instructions) uses the flagship groqModel', async () => {
+      fetchMock.mockResolvedValue(okResponse('edited'))
+      await runCommand('make it a list', 'one two', groq())
+      expect(sentModel()).toBe('llama-3.3-70b-versatile')
+    })
+
+    it('benchmarkProvider times the flagship groqModel', async () => {
+      fetchMock.mockResolvedValue(okResponse('done'))
+      await benchmarkProvider('groq', groq())
+      expect(sentModel()).toBe('llama-3.3-70b-versatile')
+    })
+
+    it('empty groqModelFast falls back to the built-in fast default', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, groq({ flowMode: 'normal', groqModelFast: '' }))
+      expect(sentModel()).toBe('llama-3.1-8b-instant')
+    })
+
+    it('fast tier falling back to minimax still uses the single MiniMax model', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, groq({ flowMode: 'normal', groqApiKey: '' }))
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+      expect(sentModel()).toBe('MiniMax-M2.5')
+    })
+
+    it('minimax provider ignores the tier entirely (single model)', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ cleanupProvider: 'minimax', flowMode: 'normal' }))
+      expect(sentModel()).toBe('MiniMax-M2.5')
     })
   })
 

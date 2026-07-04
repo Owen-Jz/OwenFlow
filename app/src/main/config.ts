@@ -20,6 +20,10 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   minimaxGroupId: '',
   groqApiKey: '',
   groqModel: 'llama-3.3-70b-versatile',
+  // Fast tier for normal-mode cleanup + digest summaries (benchmarked equal
+  // quality to the 70b at ~330ms vs ~780ms). Configs predating the field get
+  // this default via electron-store defaults + the getSettings() spread.
+  groqModelFast: 'llama-3.1-8b-instant',
   dictionary: [],
   snippets: [],
   translateTarget: 'English',
@@ -100,6 +104,7 @@ const store = new Store<OwenFlowSettings>({
     minimaxGroupId: { type: 'string', default: '' },
     groqApiKey: { type: 'string', default: '' },
     groqModel: { type: 'string', default: 'llama-3.3-70b-versatile' },
+    groqModelFast: { type: 'string', default: 'llama-3.1-8b-instant' },
     dictionary: { type: 'array', items: { type: 'string' }, default: [] },
     snippets: { type: 'array', items: { type: 'string' }, default: [] },
     translateTarget: { type: 'string', default: 'English' },

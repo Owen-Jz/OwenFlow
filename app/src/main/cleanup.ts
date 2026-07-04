@@ -7,6 +7,8 @@
  * both. Groq's llama-3.3-70b-versatile is the default (a non-reasoning model
  * that returns sub-second); MiniMax-M2.5 (a reasoning model whose thinking
  * can't be disabled, ~2.5–8s) is kept as the slow "max-polish" fallback.
+ * On Groq, calls are further routed per purpose between the flagship model
+ * and a faster small one — see ModelTier below.
  *
  *  - normal:    Wispr-Flow-style auto-edit — removes fillers/false starts,
  *               resolves spoken self-corrections to the final version, fixes
@@ -48,6 +50,8 @@ import type {
 interface ProviderConfig {
   url: string
   defaultModel: string
+  /** Cheaper model for mechanical passes (see ModelTier); absent = single-model provider. */
+  fastModel?: string
 }
 
 /** OpenAI-shaped chat providers: identical request/response shape, different
@@ -56,13 +60,26 @@ interface ProviderConfig {
 const PROVIDERS: Record<CleanupProvider, ProviderConfig> = {
   groq: {
     url: 'https://api.groq.com/openai/v1/chat/completions',
-    defaultModel: 'llama-3.3-70b-versatile'
+    defaultModel: 'llama-3.3-70b-versatile',
+    fastModel: 'llama-3.1-8b-instant'
   },
   minimax: {
     url: 'https://api.minimax.io/v1/text/chatcompletion_v2',
     defaultModel: 'MiniMax-M2.5'
   }
 }
+
+/**
+ * Which model class a call needs. Benchmarked live 2026-07-04: the 8B does
+ * normal-mode cleanup at ~330ms with quality equal to the 70B (~780ms) —
+ * cleanup is mechanical (delete fillers, fix punctuation), so 'fast' routes
+ * it (and the equally mechanical digest theme line) to settings.groqModelFast.
+ * The structural rewrites (vibe/formal/translate) and command-mode edits
+ * benefit from the 70B's reasoning and stay 'flagship' (settings.groqModel),
+ * as does the speed benchmark (it measures the flagship path). Groq-only:
+ * MiniMax has a single model either way.
+ */
+type ModelTier = 'flagship' | 'fast'
 
 /** Generous ceiling; Groq usually resolves <1s, MiniMax p95 ≈ 6s. */
 const TIMEOUT_MS = 15_000
@@ -207,11 +224,16 @@ function keyFor(settings: OwenFlowSettings, name: CleanupProvider): string {
  * saved, so vibe/formal rewrites never ran and nothing surfaced why.)
  * `allowFallback: false` keeps benchmarks honest — "Test & compare" must time
  * the provider it names or report its missing key, never a stand-in.
+ *
+ * `tier` picks between the two Groq models (see ModelTier); it is resolved
+ * against the provider actually CHOSEN, so a fast-tier call that falls back
+ * to MiniMax still gets MiniMax's single model.
  */
 function resolveProvider(
   settings: OwenFlowSettings,
   name: CleanupProvider,
-  allowFallback = true
+  allowFallback = true,
+  tier: ModelTier = 'flagship'
 ): { url: string; apiKey: string; model: string } {
   let chosen = name
   if (allowFallback && !keyFor(settings, name)) {
@@ -223,7 +245,11 @@ function resolveProvider(
   }
   const provider = PROVIDERS[chosen]
   const model =
-    chosen === 'groq' ? settings.groqModel || provider.defaultModel : provider.defaultModel
+    chosen === 'groq'
+      ? tier === 'fast'
+        ? settings.groqModelFast || provider.fastModel || provider.defaultModel
+        : settings.groqModel || provider.defaultModel
+      : provider.defaultModel
   return { url: provider.url, apiKey: keyFor(settings, chosen), model }
 }
 
@@ -241,7 +267,14 @@ export async function cleanup(raw: string, settings: OwenFlowSettings, extraSyst
   // nothing to restructure — skip the LLM round-trip for an instant paste.
   if (mode === 'normal' && raw.trim().split(/\s+/).length <= SKIP_WORD_COUNT) return raw
 
-  const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
+  // Normal cleanup is mechanical → fast tier; the structural rewrite modes
+  // (vibe/formal/translate) keep the flagship's reasoning (see ModelTier).
+  const { url, apiKey, model } = resolveProvider(
+    settings,
+    settings.cleanupProvider ?? 'groq',
+    true,
+    mode === 'normal' ? 'fast' : 'flagship'
+  )
   if (!apiKey) return raw
 
   const controller = new AbortController()
@@ -292,6 +325,7 @@ export async function runCommand(
   target: string,
   settings: OwenFlowSettings
 ): Promise<string> {
+  // Arbitrary spoken edit instructions need the flagship's reasoning (default tier).
   const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
   if (!apiKey) return ''
   const userContent = target.trim()
@@ -336,7 +370,13 @@ export async function runCommand(
  * Reuses the active provider; returns '' on no key / any error (never throws).
  */
 export async function summarize(text: string, settings: OwenFlowSettings): Promise<string> {
-  const { url, apiKey, model } = resolveProvider(settings, settings.cleanupProvider ?? 'groq')
+  // A one-line theme summary is mechanical — fast tier, like normal cleanup.
+  const { url, apiKey, model } = resolveProvider(
+    settings,
+    settings.cleanupProvider ?? 'groq',
+    true,
+    'fast'
+  )
   if (!apiKey || !text.trim()) return ''
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -375,7 +415,8 @@ export async function benchmarkProvider(
   provider: CleanupProvider,
   settings: OwenFlowSettings
 ): Promise<ProviderTiming> {
-  // No key fallback here: the benchmark must time the provider it names.
+  // No key fallback here: the benchmark must time the provider it names —
+  // on the flagship tier (default), since that is the path being compared.
   const { url, apiKey, model } = resolveProvider(settings, provider, false)
   if (!apiKey) return { provider, ok: false, ms: 0, error: 'no API key' }
 

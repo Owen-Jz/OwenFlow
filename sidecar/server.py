@@ -1,8 +1,8 @@
 """OwenFlow STT sidecar — FastAPI + faster-whisper.
 
-GET  /health      -> {"ok": true, "model": "<size>", "loaded": true}
+GET  /health      -> {"ok": true, "model": "<size>", "loaded": true, "device": "cuda"|"cpu"}
 POST /transcribe  -> multipart: file (audio), prompt (optional), language (optional)
-                     {"text": str, "duration_ms": int, "model": str}
+                     {"text": str, "duration_ms": int, "model": str, "device": str}
 """
 
 import logging
@@ -118,7 +118,9 @@ def startup() -> None:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "model": _loaded_model, "loaded": _model is not None}
+    # device lets the app surface a silent CUDA -> CPU fallback (1.5s -> 5-15s
+    # transcriptions) instead of it looking like unexplained slowness.
+    return {"ok": True, "model": _loaded_model, "loaded": _model is not None, "device": _device}
 
 
 @app.post("/transcribe")
@@ -166,7 +168,7 @@ async def transcribe(
 
     duration_ms = int((time.perf_counter() - start) * 1000)
     log.info("Transcribed %d bytes in %d ms (device=%s): %r", len(data), duration_ms, _device, text[:120])
-    return {"text": text, "duration_ms": duration_ms, "model": _loaded_model}
+    return {"text": text, "duration_ms": duration_ms, "model": _loaded_model, "device": _device}
 
 
 TTS_VOICE = "en-US-AvaNeural"

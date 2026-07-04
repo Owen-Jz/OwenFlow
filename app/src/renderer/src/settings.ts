@@ -166,10 +166,12 @@ const fMinimaxKey = $<HTMLInputElement>('f-minimax-key')
 const fMinimaxGroup = $<HTMLInputElement>('f-minimax-group')
 const fGroqKey = $<HTMLInputElement>('f-groq-key')
 const fGroqModel = $<HTMLSelectElement>('f-groq-model')
+const fGroqModelFast = $<HTMLSelectElement>('f-groq-model-fast')
 const minimaxKeyRow = $('minimax-key-row')
 const minimaxGroupRow = $('minimax-group-row')
 const groqKeyRow = $('groq-key-row')
 const groqModelRow = $('groq-model-row')
+const groqModelFastRow = $('groq-model-fast-row')
 const fTranslateTarget = $<HTMLInputElement>('f-translate-target')
 const translateTargetRow = $('translate-target-row')
 const fSnippets = $<HTMLTextAreaElement>('f-snippets')
@@ -179,6 +181,7 @@ function applyProviderVisibility(): void {
   const groq = fCleanupProvider.value === 'groq'
   groqKeyRow.classList.toggle('hidden', !groq)
   groqModelRow.classList.toggle('hidden', !groq)
+  groqModelFastRow.classList.toggle('hidden', !groq)
   minimaxKeyRow.classList.toggle('hidden', groq)
   minimaxGroupRow.classList.toggle('hidden', groq)
 }
@@ -480,6 +483,7 @@ function fillForm(s: OwenFlowSettings): void {
   fMinimaxGroup.value = s.minimaxGroupId
   fGroqKey.value = s.groqApiKey
   fGroqModel.value = s.groqModel || 'llama-3.3-70b-versatile'
+  fGroqModelFast.value = s.groqModelFast || 'llama-3.1-8b-instant'
   applyProviderVisibility()
   fDictionary.value = s.dictionary.join('\n')
   fTranslateTarget.value = s.translateTarget || 'English'
@@ -519,6 +523,7 @@ function readForm(): Partial<OwenFlowSettings> {
     minimaxGroupId: fMinimaxGroup.value.trim(),
     groqApiKey: fGroqKey.value.trim(),
     groqModel: fGroqModel.value,
+    groqModelFast: fGroqModelFast.value,
     dictionary: fDictionary.value
       .split('\n')
       .map((line) => line.trim())
@@ -1266,11 +1271,16 @@ const sidecarText = $('sidecar-status-text')
 function renderSidecarStatus({ status, detail }: SidecarStatusInfo): void {
   sidecarPill.dataset.status = status
   // The pill is 180px-sidebar-wide: show just the model name when ready
-  // ('whisper "large-v3-turbo"' → 'large-v3-turbo · ready'); full detail
-  // stays in the hover tooltip.
+  // ('whisper "large-v3-turbo" on cuda' → 'large-v3-turbo · ready'); full
+  // detail stays in the hover tooltip. A CPU fallback (CUDA failed to load)
+  // means 5-15s transcriptions instead of ~1.5s — surface it on the pill
+  // itself so the slowness is explained at a glance.
   const model = /"([^"]+)"/.exec(detail)?.[1]
+  const onCpu = / on cpu\b/.test(detail)
   sidecarText.textContent =
-    status === 'ready' && model ? `${model} · ready` : `sidecar ${status}${detail ? ` · ${detail}` : ''}`
+    status === 'ready' && model
+      ? `${model} · ready${onCpu ? ' · CPU' : ''}`
+      : `sidecar ${status}${detail ? ` · ${detail}` : ''}`
   sidecarPill.title = `Local Whisper sidecar — ${status}${detail ? ` (${detail})` : ''}`
 }
 

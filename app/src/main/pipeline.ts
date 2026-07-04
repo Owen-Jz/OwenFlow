@@ -3,12 +3,22 @@
  *   record (recorder window) → transcribe (sidecar.ts) → cleanup (cleanup.ts)
  *   → dictionary replacements → inject (injector.ts) → history append.
  *
+ * Streaming pre-transcription: while the hotkey is still held, the recorder
+ * flushes pause-separated segments ("recorder:segment" → onRecorderSegment)
+ * that a Pretranscriber transcribes in the background. On release only the
+ * final remainder ("recorder:data") is transcribed, the texts are joined,
+ * and the EXISTING tail (snippet → cleanup → dictionary → press-enter →
+ * inject → one history entry) runs exactly once — same UX, but stop→paste no
+ * longer pays for transcribing the whole take. See pretranscribe.ts for the
+ * ordering/fallback design.
+ *
  * Everything external is injected through a single `PipelineDeps` object so
  * the real modules (sidecar/injector/cleanup) plug in from index.ts and tests
  * can mock the whole flow.
  */
 
 import type { HistoryEntry, OwenFlowSettings, PillState } from '../shared/types'
+import { Pretranscriber } from './pretranscribe'
 import { applyReplacements, parseDictionary } from './dictionary'
 import { matchSnippet, parseSnippets } from './snippets'
 import { activeSessionMode, parseSessionTones } from './sessions'
@@ -39,8 +49,16 @@ export interface PipelineDeps {
   /** Append a finished dictation to history.jsonl. */
   appendHistory: (entry: HistoryEntry) => void
 
-  /** sidecar.ts — POST wav to the local faster-whisper server. */
-  transcribe?: (wav: ArrayBuffer, settings: OwenFlowSettings) => Promise<TranscribeResult>
+  /**
+   * sidecar.ts — POST wav to the local faster-whisper server. `context` is
+   * the trailing words of the transcript so far (segment boundary accuracy);
+   * index.ts appends it to the dictionary bias prompt.
+   */
+  transcribe?: (
+    wav: ArrayBuffer,
+    settings: OwenFlowSettings,
+    context?: string
+  ) => Promise<TranscribeResult>
   /** cleanup.ts — mode-aware MiniMax pass (6s/12s timeout, raw fallback). */
   cleanup?: (raw: string, settings: OwenFlowSettings, extraSystem?: string) => Promise<string>
   /** injector.ts — clipboard-swap paste into the focused app. */
@@ -67,6 +85,14 @@ let processing = false
  */
 let generation = 0
 let hideTimer: NodeJS.Timeout | null = null
+/**
+ * Background pre-transcriber for the CURRENT dictation. Created on start,
+ * fed by onRecorderSegment while recording, drained by stopDictation, and
+ * cancelled+dropped on cancel. Kept non-null until the final recorder:data
+ * arrives because renderer IPC ordering guarantees every recorder:segment
+ * lands BEFORE it — nulling earlier would drop (lose) tail segments.
+ */
+let pretrans: Pretranscriber | null = null
 
 export function initPipeline(pipelineDeps: PipelineDeps): void {
   deps = pipelineDeps
@@ -89,9 +115,26 @@ export async function startDictation(): Promise<void> {
   if (isCommandActive()) return
   dictating = true
   generation++
+  // Fresh accumulator per dictation. Its transcribe closure re-reads settings
+  // per segment (cheap, and mid-dictation settings edits stay coherent).
+  const d = deps
+  pretrans = new Pretranscriber(async (wav, context) => {
+    if (!d.transcribe) throw new Error('Transcriber unavailable')
+    return (await d.transcribe(wav, d.getSettings(), context)).text
+  })
   if (hideTimer) clearTimeout(hideTimer)
   deps.setPillState({ state: 'recording' })
   deps.recorderStart()
+}
+
+/**
+ * A pause-flushed segment arrived from the recorder while a normal dictation
+ * is in flight (index.ts routes "recorder:segment" here when continuous mode
+ * isn't the active channel). No generation/dictating check needed: `pretrans`
+ * is nulled on cancel and internally refuses pushes after finish().
+ */
+export function onRecorderSegment(wav: ArrayBuffer): void {
+  pretrans?.push(wav)
 }
 
 /**
@@ -104,6 +147,10 @@ export async function startDictation(): Promise<void> {
 export function cancelDictation(): boolean {
   if (!deps || (!dictating && !processing)) return false
   generation++ // invalidate any in-flight stopDictation()
+  // Kill background pre-transcription too: no new segment transcribes are
+  // issued and anything in flight resolves into a discarded instance.
+  pretrans?.cancel()
+  pretrans = null
   if (dictating) {
     dictating = false
     // Stop the recorder so the mic releases; discard whatever it captured.
@@ -119,7 +166,8 @@ export function cancelDictation(): boolean {
 
 /**
  * End a dictation (hotkey released / toggled off):
- * collect WAV → transcribe → cleanup → dictionary → inject → history.
+ * collect final WAV → drain pre-transcriptions + transcribe the remainder →
+ * cleanup → dictionary → inject → history.
  */
 export async function stopDictation(): Promise<void> {
   if (!deps || !dictating) return
@@ -135,32 +183,51 @@ export async function stopDictation(): Promise<void> {
     wav = await deps.recorderStop()
   } catch (err) {
     if (gen !== generation) return // cancelled mid-flight
+    // The recorder produced nothing — abandon any pre-transcribed segments
+    // too (a partial paste would be out-of-order text).
+    pretrans?.cancel()
+    pretrans = null
     processing = false
     failPill(err instanceof Error ? err.message : 'Recorder failed')
     return
   }
   if (gen !== generation) return // cancelled — discard the audio
 
+  // Every recorder:segment has arrived by now (renderer IPC ordering: they
+  // precede recorder:data), so the accumulator can be taken over safely.
+  const pt = pretrans
+  pretrans = null
+
   const settings = deps.getSettings()
 
-  // 1. Transcribe (local whisper sidecar).
-  let raw: string
-  try {
-    if (!deps.transcribe) throw new Error('Transcriber unavailable')
-    const result = await deps.transcribe(wav, settings)
-    raw = result.text.trim()
-  } catch (err) {
-    if (gen !== generation) return
+  // 1. Transcribe: wait for in-flight segment transcriptions, transcribe the
+  //    final remainder, and join. `pt` is always set on this path (created in
+  //    startDictation, and cancel bumps the generation) — the fallback
+  //    accumulator is pure defensiveness for a torn state.
+  const acc =
+    pt ??
+    new Pretranscriber(async (w, context) => {
+      if (!deps?.transcribe) throw new Error('Transcriber unavailable')
+      return (await deps.transcribe(w, settings, context)).text
+    })
+  const outcome = await acc.finish(wav)
+  if (gen !== generation) return // cancelled — ignore the late transcript
+
+  if (!outcome.ok) {
+    // A segment failed even after its stop-time retry (sidecar cold/busy).
+    // Never lose audio, never paste out of order: queue EVERY segment WAV in
+    // order — the transcribe-queue recovers them to History tagged
+    // 'recovered' (full dictation, correct order), nothing is pasted.
     processing = false
     if (deps.enqueueTranscription) {
-      deps.enqueueTranscription(wav, settings, startedAt)
+      for (const w of outcome.wavs) deps.enqueueTranscription(w, settings, startedAt)
       failPill('⏳ Queued — will transcribe when ready', 2500)
       return
     }
-    failPill(err instanceof Error ? err.message : 'Transcription failed')
+    failPill(outcome.error)
     return
   }
-  if (gen !== generation) return // cancelled — ignore the late transcript
+  const raw = outcome.text
 
   // 2. Empty / silence → flash "—", inject nothing.
   if (!raw) {

@@ -4,6 +4,7 @@ import {
   initPipeline,
   isDictating,
   isDictationActive,
+  onRecorderSegment,
   startDictation,
   stopDictation,
   type PipelineDeps
@@ -301,6 +302,142 @@ describe('pipeline', () => {
     deps.transcribe.mockResolvedValue({ text: 'please review the attached', durationMs: 10 })
     await runDictation(deps)
     expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal')
+  })
+})
+
+describe('streaming pre-transcription (normal one-shot path)', () => {
+  /** Flush microtasks until cond() holds (bounded) — background segment work is promise-based. */
+  async function flushUntil(cond: () => boolean): Promise<void> {
+    for (let i = 0; i < 50 && !cond(); i++) await Promise.resolve()
+    expect(cond()).toBe(true)
+  }
+
+  it('segments flushed while recording pre-transcribe; stop joins them + runs the tail ONCE', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), order)
+    const texts = ['first segment', 'second segment', 'final bit']
+    let call = 0
+    deps.transcribe.mockImplementation(async () => {
+      order.push('transcribe')
+      return { text: texts[call++], durationMs: 50 }
+    })
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8))
+    onRecorderSegment(new ArrayBuffer(16))
+    // Both background transcriptions complete BEFORE the hotkey is released —
+    // that's the whole latency win.
+    await flushUntil(() => call === 2)
+    await stopDictation()
+
+    // 3 transcribes (2 background + final remainder) but ONE cleanup-tail:
+    // one inject, one history entry, joined with single spaces.
+    expect(deps.transcribe).toHaveBeenCalledTimes(3)
+    expect(deps.inject).toHaveBeenCalledTimes(1)
+    expect(deps.inject).toHaveBeenCalledWith('first segment second segment final bit')
+    expect(deps.appendHistory).toHaveBeenCalledTimes(1)
+    expect(deps.appendHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ raw: 'first segment second segment final bit' })
+    )
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
+  })
+
+  it('threads boundary context (prior transcript tail) into each segment after the first', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    const texts = ['one two three', 'four five', 'six']
+    const contexts: (string | undefined)[] = []
+    deps.transcribe.mockImplementation(async (_wav: ArrayBuffer, _s: unknown, context?: string) => {
+      contexts.push(context)
+      return { text: texts[contexts.length - 1], durationMs: 10 }
+    })
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8))
+    onRecorderSegment(new ArrayBuffer(16))
+    await stopDictation()
+
+    expect(contexts).toEqual([undefined, 'one two three', 'one two three four five'])
+    expect(deps.inject).toHaveBeenCalledWith('one two three four five six')
+  })
+
+  it('a mid-recording segment failure recovers via the stop-time retry — still pastes normally', async () => {
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), [])
+    let call = 0
+    deps.transcribe.mockImplementation(async () => {
+      call++
+      if (call === 1) throw new Error('sidecar busy') // background attempt fails
+      return { text: call === 2 ? 'first segment' : 'final bit', durationMs: 10 }
+    })
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8))
+    await flushUntil(() => call === 1)
+    await stopDictation()
+
+    // Retry on stop (call 2) + final remainder (call 3) → normal paste path.
+    expect(deps.transcribe).toHaveBeenCalledTimes(3)
+    expect(deps.inject).toHaveBeenCalledWith('first segment final bit')
+    expect(deps.enqueueTranscription).not.toHaveBeenCalled()
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'done' })
+  })
+
+  it('a segment failing its retry too → ALL segment WAVs queued in order, nothing pasted', async () => {
+    const deps = makeDeps(baseSettings(), [])
+    deps.transcribe.mockRejectedValue(new Error('Transcriber not ready (starting)'))
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8))
+    onRecorderSegment(new ArrayBuffer(16))
+    await stopDictation()
+
+    // 2 pause segments + the final remainder, each enqueued for recovery
+    // (History 'recovered' entries, in order) — never a partial paste.
+    expect(deps.enqueueTranscription).toHaveBeenCalledTimes(3)
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+    const last = pillStates(deps).at(-1)
+    expect(last?.state).toBe('error')
+    expect(last?.message).toContain('Queued')
+  })
+
+  it('escape discards in-flight segment transcriptions — late result never pastes', async () => {
+    const deps = makeDeps(baseSettings(), [])
+    let resolveSeg!: (r: { text: string; durationMs: number }) => void
+    deps.transcribe.mockImplementation(
+      () => new Promise<{ text: string; durationMs: number }>((r) => (resolveSeg = r))
+    )
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8))
+    await flushUntil(() => deps.transcribe.mock.calls.length === 1)
+
+    expect(cancelDictation()).toBe(true)
+    resolveSeg({ text: 'late segment that must not paste', durationMs: 999 })
+    await flushUntil(() => !isDictationActive())
+
+    // A segment arriving after the cancel is dropped, not pre-transcribed.
+    onRecorderSegment(new ArrayBuffer(16))
+    await stopDictation() // no-op — dictation was cancelled
+    expect(deps.transcribe).toHaveBeenCalledTimes(1)
+    expect(deps.inject).not.toHaveBeenCalled()
+    expect(deps.appendHistory).not.toHaveBeenCalled()
+    expect(pillStates(deps).at(-1)).toEqual({ state: 'idle' })
+  })
+
+  it('no segments flushed (short dictation) behaves exactly like the old single-shot path', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ cleanupEnabled: false }), order)
+    initPipeline(deps)
+    await startDictation()
+    await stopDictation()
+    expect(order).toEqual(['record', 'recorderStop', 'transcribe', 'inject', 'history'])
+    expect(deps.transcribe).toHaveBeenCalledTimes(1)
+    expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
   })
 })
 

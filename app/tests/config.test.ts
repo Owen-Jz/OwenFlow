@@ -49,14 +49,24 @@ describe('config cleanup provider', () => {
     expect(DEFAULT_SETTINGS.groqApiKey).toBe('')
   })
 
+  // Fast tier for normal-mode cleanup + digest (2026-07-04 benchmark: equal
+  // quality to the 70b at ~330ms vs ~780ms). Configs missing the field get
+  // the default via electron-store defaults + the getSettings() spread.
+  it('defaults groqModelFast to llama-3.1-8b-instant', () => {
+    expect(DEFAULT_SETTINGS.groqModelFast).toBe('llama-3.1-8b-instant')
+    expect(getSettings().groqModelFast).toBe('llama-3.1-8b-instant')
+  })
+
   it('declares cleanupProvider schema as groq | minimax with groq default', () => {
     const schema = captured.options?.schema as Record<
       string,
-      { enum?: string[]; default?: string }
+      { enum?: string[]; default?: string; type?: string }
     >
     expect(schema.cleanupProvider.enum).toEqual(['groq', 'minimax'])
     expect(schema.cleanupProvider.default).toBe('groq')
     expect(schema.groqModel.default).toBe('llama-3.3-70b-versatile')
+    expect(schema.groqModelFast.type).toBe('string')
+    expect(schema.groqModelFast.default).toBe('llama-3.1-8b-instant')
   })
 })
 

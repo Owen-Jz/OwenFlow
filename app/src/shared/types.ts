@@ -103,8 +103,14 @@ export interface OwenFlowSettings {
   minimaxGroupId: string
   /** Groq API key (used when cleanupProvider === 'groq'). Stored locally only. */
   groqApiKey: string
-  /** Groq model id, e.g. llama-3.3-70b-versatile or llama-3.1-8b-instant. */
+  /** Groq model id for vibe/formal/translate (reasoning-heavy rewrites). */
   groqModel: string
+  /**
+   * Groq model id for normal-mode cleanup + digest summaries. Benchmarked
+   * 2026-07-04: llama-3.1-8b-instant matches 70b quality on cleanup at ~330ms
+   * vs ~780ms — cleanup is mechanical, the structural modes keep the big model.
+   */
+  groqModelFast: string
   /**
    * Dictionary entries, one per item.
    * Plain words bias whisper recognition (initial_prompt);
@@ -243,15 +249,29 @@ export interface OwenFlowApi {
     onLevel: (cb: (frame: LevelFrame) => void) => () => void
   }
   recorder: {
-    /** Main asks the hidden recorder window to start capturing ("recorder:start"). */
+    /**
+     * Main asks the hidden recorder window to start capturing
+     * ("recorder:start"). `continuous` picks the finalize contract: true →
+     * per-segment paste flow ending in recorder:done; false (normal one-shot)
+     * → segments are only PRE-transcribed and recorder:data carries the final
+     * remainder.
+     */
     onStart: (cb: (continuous: boolean) => void) => () => void
     /** Main asks the recorder to stop ("recorder:stop"). */
     onStop: (cb: () => void) => () => void
-    /** Recorder replies with a 16kHz mono WAV ("recorder:data"). */
+    /**
+     * Normal mode's stop reply: the 16kHz mono WAV since the last
+     * pause-flushed segment — the whole take when nothing was flushed
+     * ("recorder:data").
+     */
     sendData: (wav: ArrayBuffer) => void
-    /** Send a mid-session audio segment for continuous dictation ("recorder:segment"). */
+    /**
+     * Send a pause-flushed mid-session audio segment ("recorder:segment").
+     * Both modes: continuous pastes it per segment, normal pre-transcribes it
+     * in the background. Always delivered BEFORE recorder:data (ordered IPC).
+     */
     sendSegment: (wav: ArrayBuffer) => void
-    /** Signal that all segments have been flushed ("recorder:done"). */
+    /** Continuous mode only: all segments have been flushed ("recorder:done"). */
     sendDone: () => void
     /** Report a capture error to main (mic denied etc.). */
     sendError: (message: string) => void

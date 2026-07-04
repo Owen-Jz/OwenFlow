@@ -24,6 +24,9 @@ export interface SidecarHealth {
   ok: boolean
   model: string
   loaded: boolean
+  /** 'cuda' | 'cpu' | 'unloaded' — cpu means a silent CUDA fallback happened
+   *  (transcriptions run 5-15s instead of ~1.5s), so it must be visible. */
+  device: string
 }
 
 export interface SidecarTranscribeResult {
@@ -196,7 +199,9 @@ async function spawnAndWait(): Promise<void> {
     const health = await checkHealth()
     if (health?.loaded) {
       restartCount = 0
-      setStatus('ready', `whisper "${health.model}"`)
+      // Device is part of the detail (settings pill + tray tooltip): a CPU
+      // fallback is the difference between ~1.5s and 5-15s per transcription.
+      setStatus('ready', `whisper "${health.model}" on ${health.device}`)
       console.log('[sidecar] ready:', health)
       return
     }

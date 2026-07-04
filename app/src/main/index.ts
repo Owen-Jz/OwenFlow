@@ -24,6 +24,7 @@ import {
   initPipeline,
   isDictating,
   isDictationActive,
+  onRecorderSegment,
   simulateDictation,
   startDictation,
   stopDictation
@@ -202,8 +203,17 @@ function registerIpc(): void {
     if (pill && !pill.isDestroyed()) pill.webContents.send(IPC.recorderLevel, frame)
   })
 
-  // Continuous dictation: segment WAVs and done signal from the recorder window.
-  ipcMain.on(IPC.recorderSegment, (_e, wav: ArrayBuffer) => onSegment(wav))
+  // Segment WAVs from the recorder window. Continuous and normal dictation
+  // are mutually exclusive (hotkey wiring below), so route by which channel
+  // is active: continuous pastes per segment, normal PRE-transcribes in the
+  // background (pipeline drops the segment if no dictation is in flight —
+  // e.g. a flush racing a cancel).
+  ipcMain.on(IPC.recorderSegment, (_e, wav: ArrayBuffer) => {
+    if (isContinuousActive()) onSegment(wav)
+    else onRecorderSegment(wav)
+  })
+  // recorder:done is only emitted in continuous mode (normal mode's final
+  // reply is recorder:data).
   ipcMain.on(IPC.recorderDone, () => { void onDone() })
 
   // recorder:data / recorder:error are consumed via ipcMain.once in recorderStop().
@@ -305,9 +315,15 @@ app.whenReady().then(async () => {
     recorderStop,
     getSettings,
     appendHistory: history.append,
-    transcribe: (wav, settings) => {
+    // `context` (trailing words of the transcript so far, for segment
+    // boundary accuracy) goes AFTER the bias prompt: whisper conditions most
+    // strongly on the trailing tokens of initial_prompt, and the context is
+    // what immediately precedes the audio being decoded.
+    transcribe: (wav, settings, context) => {
       const { promptWords } = parseDictionary(settings.dictionary)
-      return transcribe(wav, buildBiasPrompt(promptWords), settings.language || undefined)
+      const bias = buildBiasPrompt(promptWords)
+      const prompt = [bias, context].filter(Boolean).join(' ') || undefined
+      return transcribe(wav, prompt, settings.language || undefined)
     },
     cleanup,
     inject,
