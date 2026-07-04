@@ -194,16 +194,37 @@ interface ChatResponse {
   choices?: Array<{ message?: { content?: string } }>
 }
 
-/** Resolve a provider's endpoint, key and model from settings. */
+function keyFor(settings: OwenFlowSettings, name: CleanupProvider): string {
+  return name === 'groq' ? settings.groqApiKey : settings.minimaxApiKey
+}
+
+/**
+ * Resolve a provider's endpoint, key and model from settings.
+ *
+ * When the selected provider has no key but the OTHER one does, fall back to
+ * the other — a configured-but-idle key beats silently pasting raw. (Owen hit
+ * this live: Groq became the default provider but only his MiniMax key was
+ * saved, so vibe/formal rewrites never ran and nothing surfaced why.)
+ * `allowFallback: false` keeps benchmarks honest — "Test & compare" must time
+ * the provider it names or report its missing key, never a stand-in.
+ */
 function resolveProvider(
   settings: OwenFlowSettings,
-  name: CleanupProvider
+  name: CleanupProvider,
+  allowFallback = true
 ): { url: string; apiKey: string; model: string } {
-  const provider = PROVIDERS[name]
-  const apiKey = name === 'groq' ? settings.groqApiKey : settings.minimaxApiKey
+  let chosen = name
+  if (allowFallback && !keyFor(settings, name)) {
+    const other: CleanupProvider = name === 'groq' ? 'minimax' : 'groq'
+    if (keyFor(settings, other)) {
+      console.warn(`[cleanup] no ${name} key set — falling back to ${other}`)
+      chosen = other
+    }
+  }
+  const provider = PROVIDERS[chosen]
   const model =
-    name === 'groq' ? settings.groqModel || provider.defaultModel : provider.defaultModel
-  return { url: provider.url, apiKey, model }
+    chosen === 'groq' ? settings.groqModel || provider.defaultModel : provider.defaultModel
+  return { url: provider.url, apiKey: keyFor(settings, chosen), model }
 }
 
 export async function cleanup(raw: string, settings: OwenFlowSettings, extraSystem?: string): Promise<string> {
@@ -354,7 +375,8 @@ export async function benchmarkProvider(
   provider: CleanupProvider,
   settings: OwenFlowSettings
 ): Promise<ProviderTiming> {
-  const { url, apiKey, model } = resolveProvider(settings, provider)
+  // No key fallback here: the benchmark must time the provider it names.
+  const { url, apiKey, model } = resolveProvider(settings, provider, false)
   if (!apiKey) return { provider, ok: false, ms: 0, error: 'no API key' }
 
   const started = Date.now()

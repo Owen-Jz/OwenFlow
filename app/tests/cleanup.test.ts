@@ -371,11 +371,43 @@ describe('cleanup', () => {
       expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('llama-3.3-70b-versatile')
     })
 
-    it('returns raw without fetching when groq is selected but groqApiKey is empty', async () => {
+    // Key auto-fallback: a configured-but-idle key on the OTHER provider beats
+    // silently pasting raw. (Owen hit this live: Groq became the default
+    // provider but only his MiniMax key was saved → vibe mode never ran.)
+    it('falls back to minimax when groq is selected but only minimax has a key', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
       await expect(
         cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: '' }))
+      ).resolves.toBe('Cleaned.')
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+      expect(init.headers.Authorization).toBe('Bearer test-key')
+      expect(JSON.parse(init.body).model).toBe('MiniMax-M2.5')
+    })
+
+    it('falls back to groq when minimax is selected but only groq has a key', async () => {
+      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'minimax', minimaxApiKey: '' }))
+      ).resolves.toBe('Cleaned.')
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(init.headers.Authorization).toBe('Bearer groq-key')
+    })
+
+    it('returns raw without fetching when NEITHER provider has a key', async () => {
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: '', minimaxApiKey: '' }))
       ).resolves.toBe(RAW)
       expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('vibe mode also rides the key fallback (the mode that exposed the bug)', async () => {
+      fetchMock.mockResolvedValue(okResponse('Add a retry to the sidecar restart logic.'))
+      await expect(
+        cleanup('so um add a retry thing', settings({ flowMode: 'vibe', cleanupProvider: 'groq', groqApiKey: '' }))
+      ).resolves.toBe('Add a retry to the sidecar restart logic.')
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
     })
 
     it('minimax provider still hits the MiniMax endpoint with the minimax key', async () => {
@@ -475,8 +507,10 @@ describe('cleanup', () => {
       expect(out).toBe('Themes: code, email.')
       expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content.toLowerCase()).toContain('summ')
     })
-    it('returns empty string with no key', async () => {
-      expect(await summarize('x', settings({ cleanupProvider: 'groq', groqApiKey: '' }))).toBe('')
+    it('returns empty string when neither provider has a key', async () => {
+      expect(
+        await summarize('x', settings({ cleanupProvider: 'groq', groqApiKey: '', minimaxApiKey: '' }))
+      ).toBe('')
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })
@@ -494,8 +528,10 @@ describe('cleanup', () => {
       fetchMock.mockResolvedValue(okResponse('haiku here'))
       expect(await runCommand('write a haiku', '', settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))).toBe('haiku here')
     })
-    it('returns empty string with no key', async () => {
-      expect(await runCommand('x', 'y', settings({ groqApiKey: '', cleanupProvider: 'groq' }))).toBe('')
+    it('returns empty string when neither provider has a key', async () => {
+      expect(
+        await runCommand('x', 'y', settings({ groqApiKey: '', minimaxApiKey: '', cleanupProvider: 'groq' }))
+      ).toBe('')
       expect(fetchMock).not.toHaveBeenCalled()
     })
   })
