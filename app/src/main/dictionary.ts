@@ -35,6 +35,44 @@ export function parseDictionary(dictionary: string[]): {
   return { promptWords, replacements }
 }
 
+/**
+ * Whisper truncates initial_prompt to its last ~224 tokens, so an over-long
+ * prompt silently drops the words at the START of the string — the opposite
+ * of what a user editing their dictionary top-down would expect. Cap well
+ * under that (~600 chars ≈ 150-200 tokens) and drop overflow from the END
+ * so the first dictionary entries always survive.
+ */
+const BIAS_PROMPT_MAX_CHARS = 600
+
+/**
+ * Build the whisper initial_prompt from dictionary bias words.
+ *
+ * initial_prompt conditions the decoder on style as well as vocabulary, so a
+ * bare comma-joined word list ("zeal, cresio") nudges whisper toward
+ * lowercase, punctuation-free output. Wrapping the words in a natural,
+ * properly-punctuated sentence ("Vocabulary: Cresio, Fluxboard.") biases both
+ * the custom terms AND normal casing/punctuation.
+ *
+ * Returns undefined for empty input so callers can pass it straight through
+ * to transcribe() (the sidecar treats missing prompt as "no bias").
+ */
+export function buildBiasPrompt(promptWords: string[]): string | undefined {
+  const words = promptWords.map((w) => w.trim()).filter((w) => w.length > 0)
+  if (words.length === 0) return undefined
+
+  const prefix = 'Vocabulary: '
+  const kept: string[] = []
+  let length = prefix.length + 1 // +1 for the trailing period
+  for (const word of words) {
+    // ", " separator applies to every word after the first
+    const cost = kept.length === 0 ? word.length : word.length + 2
+    if (length + cost > BIAS_PROMPT_MAX_CHARS && kept.length > 0) break
+    kept.push(word)
+    length += cost
+  }
+  return `${prefix}${kept.join(', ')}.`
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

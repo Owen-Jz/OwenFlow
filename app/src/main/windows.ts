@@ -5,8 +5,8 @@ import appIcon from '../../resources/icon.png?asset'
 import type { PillState } from '../shared/types'
 import { IPC } from '../shared/types'
 
-const PILL_WIDTH = 216 // window is slightly wider than the visual pill (200px) for shadow room
-const PILL_HEIGHT = 52 // visual pill is 40px tall
+const PILL_WIDTH = 220 // fits the widest pill state (recording, 180px) + shadow room
+const PILL_HEIGHT = 60 // visual pill is 44px tall; extra rows for the drop shadow
 const PILL_BOTTOM_MARGIN = 64 // px above the taskbar (work area bottom)
 
 const preloadPath = join(__dirname, '../preload/index.js')

@@ -1102,11 +1102,19 @@
             <div class="card">
               <h2>AI cleanup</h2>
               <div class="row">
-                <label class="title" for="f-cleanup">
-                  Cleanup pass in Normal mode
-                  <span class="hint">The selected engine removes fillers and fixes punctuation; raw fallback on error</span>
+                <label class="title">
+                  Auto cleanup intensity
+                  <span class="hint">How much Normal mode is auto-edited; Vibe, Formal and Translate ignore this</span>
                 </label>
-                <input type="checkbox" id="f-cleanup" />
+                <div class="seg" id="intensity-seg">
+                  <button type="button" class="seg-opt" data-intensity-opt="none">None</button>
+                  <button type="button" class="seg-opt" data-intensity-opt="light">Light</button>
+                  <button type="button" class="seg-opt" data-intensity-opt="medium">Medium</button>
+                  <button type="button" class="seg-opt" data-intensity-opt="high">High</button>
+                </div>
+              </div>
+              <div class="row">
+                <span class="hint" id="intensity-desc"></span>
               </div>
               <div class="row">
                 <label class="title" for="f-cleanup-provider">

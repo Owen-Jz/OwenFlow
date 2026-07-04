@@ -1,8 +1,8 @@
 import Store from 'electron-store'
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import type { OwenFlowSettings } from '../shared/types'
+import type { CleanupIntensity, OwenFlowSettings } from '../shared/types'
 import { DEFAULT_PROFILES } from './profiles'
 
 export const DEFAULT_SETTINGS: OwenFlowSettings = {
@@ -11,7 +11,10 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   flowMode: 'normal',
   model: 'small',
   language: '',
-  cleanupEnabled: false,
+  // Fresh installs default to the medium Auto Cleanup intensity; the legacy
+  // cleanupEnabled toggle mirrors it (true ⇔ intensity !== 'none').
+  cleanupEnabled: true,
+  cleanupIntensity: 'medium',
   cleanupProvider: 'groq',
   minimaxApiKey: '',
   minimaxGroupId: '',
@@ -39,12 +42,38 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
 
 // Captured BEFORE the store is instantiated (electron-store may write the
 // file with defaults on first construction).
-const settingsFileExisted = existsSync(join(app.getPath('userData'), 'config.json'))
+const settingsFilePath = join(app.getPath('userData'), 'config.json')
+const settingsFileExisted = existsSync(settingsFilePath)
 
 /** True when no settings file existed at boot (very first launch). */
 export function isFirstRun(): boolean {
   return !settingsFileExisted
 }
+
+/**
+ * Derive cleanupIntensity for configs written before the field existed: the
+ * legacy cleanupEnabled master toggle maps on → 'medium', off/absent → 'none'
+ * (absent behaved as off — the old default was false). Returns undefined when
+ * no migration is needed (the field is already present).
+ */
+export function deriveCleanupIntensity(
+  raw: Record<string, unknown>
+): CleanupIntensity | undefined {
+  if (raw.cleanupIntensity !== undefined) return undefined
+  return raw.cleanupEnabled === true ? 'medium' : 'none'
+}
+
+// Raw pre-migration file contents, read BEFORE the store is constructed —
+// electron-store merges defaults into the file at construction, which would
+// make "field was missing" undetectable afterwards.
+const rawLegacyConfig: Record<string, unknown> = (() => {
+  if (!settingsFileExisted) return {}
+  try {
+    return JSON.parse(readFileSync(settingsFilePath, 'utf8')) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+})()
 
 const store = new Store<OwenFlowSettings>({
   name: 'config',
@@ -59,7 +88,12 @@ const store = new Store<OwenFlowSettings>({
       default: 'small'
     },
     language: { type: 'string', default: '' },
-    cleanupEnabled: { type: 'boolean', default: false },
+    cleanupEnabled: { type: 'boolean', default: true },
+    cleanupIntensity: {
+      type: 'string',
+      enum: ['none', 'light', 'medium', 'high'],
+      default: 'medium'
+    },
     cleanupProvider: { type: 'string', enum: ['groq', 'minimax'], default: 'groq' },
     minimaxApiKey: { type: 'string', default: '' },
     minimaxGroupId: { type: 'string', default: '' },
@@ -85,6 +119,18 @@ const store = new Store<OwenFlowSettings>({
     theme: { type: 'string', enum: ['dark', 'light', 'system'], default: 'dark' }
   }
 })
+
+// Migration: configs from before cleanupIntensity existed get it derived from
+// the legacy cleanupEnabled toggle (on → 'medium', off → 'none') instead of
+// the fresh-install 'medium' default; the toggle is re-synced for older
+// readers that still gate on it.
+{
+  const migrated = settingsFileExisted ? deriveCleanupIntensity(rawLegacyConfig) : undefined
+  if (migrated !== undefined) {
+    store.set('cleanupIntensity', migrated)
+    store.set('cleanupEnabled', migrated !== 'none')
+  }
+}
 
 export function getSettings(): OwenFlowSettings {
   return { ...DEFAULT_SETTINGS, ...store.store }

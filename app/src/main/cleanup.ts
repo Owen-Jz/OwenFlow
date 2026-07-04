@@ -8,17 +8,37 @@
  * that returns sub-second); MiniMax-M2.5 (a reasoning model whose thinking
  * can't be disabled, ~2.5–8s) is kept as the slow "max-polish" fallback.
  *
- *  - normal: cleanup + restructuring — respects cleanupEnabled, and skips the
- *            LLM entirely for very short transcripts (≤3 words)
- *  - vibe:   restructures rambly speech into a refined AI coding prompt — ALWAYS
- *            runs when a key for the active provider is set
- *  - formal: client-ready professional rewrite — same gating as vibe
+ *  - normal:    Wispr-Flow-style auto-edit — removes fillers/false starts,
+ *               resolves spoken self-corrections to the final version, fixes
+ *               punctuation/casing/homophones, applies dictated punctuation
+ *               ("new line", "period"), formats numbers/emails/URLs — while
+ *               PRESERVING the speaker's voice and tone (cleanup, not a
+ *               rewrite). Shaped by the Auto Cleanup intensity
+ *               (settings.cleanupIntensity): 'none' skips the LLM entirely
+ *               (raw verbatim paste), 'light' only strips fillers + basic
+ *               punctuation/casing, 'medium' is the full auto-edit above,
+ *               'high' adds run-on restructuring, spoken-list formatting and
+ *               grammar fixes. The legacy cleanupEnabled toggle is still
+ *               honored as 'none' when false, and the LLM is skipped for
+ *               very short transcripts (≤3 words).
+ *  - vibe:      prompt-engineering pass — turns rambly developer dictation into
+ *               a structured prompt for an AI coding agent (objective line +
+ *               "- " bullets, technical tokens preserved verbatim, detours
+ *               dropped, expected-behavior line when stated) — ALWAYS runs when
+ *               a key for the active provider is set
+ *  - formal:    client-ready professional rewrite in natural business English;
+ *               keeps every commitment/fact exactly as spoken — same gating as
+ *               vibe
+ *  - translate: natural native-phrasing translation into settings.translateTarget
+ *               (prompt built dynamically in systemPromptFor) — same gating as
+ *               vibe
  *
  * Contract: NEVER throws, never blocks the pipeline — any error, timeout (15s),
  * non-200, missing key or empty reply returns the raw transcript unchanged.
  */
 
 import type {
+  CleanupIntensity,
   CleanupProvider,
   FlowMode,
   OwenFlowSettings,
@@ -60,33 +80,95 @@ const SKIP_WORD_COUNT = 3
 const BENCHMARK_TEXT =
   'um so this is a quick test of the refinement speed you know to compare the two providers'
 
+/** Shared closing line for every normal-mode prompt variant. */
+const OUTPUT_ONLY = 'Output ONLY the cleaned text — no quotes, labels, or commentary.'
+
+/** Core Wispr-style auto-edit rules — the medium intensity (numbered at build time). */
+const NORMAL_EDIT_RULES = [
+  'Remove filler words (um, uh, like, you know, sort of) and false starts.',
+  'Resolve spoken self-corrections — keep only the final version ("send it Tuesday, no wait, Wednesday" -> Wednesday only).',
+  'Fix punctuation, casing, and obvious homophone/transcription slips from context.',
+  'Convert spoken punctuation ONLY when clearly dictated as a command: "new line", "period", "comma", "question mark".',
+  'Format numbers, emails, and URLs naturally: "john dot smith at gmail dot com" -> john.smith@gmail.com; "twenty five percent" -> 25%.'
+]
+
+/** Extra readability rules the high intensity layers on top of medium. */
+const NORMAL_HIGH_RULES = [
+  'Restructure run-on sentences into clear, readable sentences.',
+  'When the speaker enumerates items ("first... second...", "one... two..."), format them as a "- " bullet list (or a numbered list when the order matters).',
+  'Fix grammar mistakes.'
+]
+
+/** Voice-preservation guard rails shared by medium and high. */
+const NORMAL_GUARD_RULES = [
+  "PRESERVE the speaker's voice, word choice, and tone; do not formalize casual speech or rephrase beyond the fixes above.",
+  'Never add, answer, or summarize anything.'
+]
+
+function buildNormalPrompt(extraRules: string[]): string {
+  const rules = [...NORMAL_EDIT_RULES, ...extraRules, ...NORMAL_GUARD_RULES]
+  return [
+    'Clean up this raw speech-to-text dictation transcript. This is cleanup, not rewriting.',
+    'Rules:',
+    ...rules.map((rule, i) => `${i + 1}. ${rule}`),
+    OUTPUT_ONLY
+  ].join('\n')
+}
+
+/**
+ * Normal-mode prompt per Auto Cleanup intensity ('none' never reaches the LLM).
+ * Light is a deliberately minimal variant: fillers + basic punctuation/casing
+ * only — no self-correction resolution, no number/email reformatting.
+ */
+const NORMAL_PROMPTS: Record<Exclude<CleanupIntensity, 'none'>, string> = {
+  light: [
+    'Lightly clean up this raw speech-to-text dictation transcript.',
+    'Rules:',
+    '1. ONLY remove filler words (um, uh, like, you know, sort of).',
+    '2. Add basic punctuation and sentence casing.',
+    '3. Keep every word as spoken — do not resolve self-corrections, do not reformat numbers, emails, or URLs, and do not rephrase or reorder anything.',
+    '4. Never add, answer, or summarize anything.',
+    OUTPUT_ONLY
+  ].join('\n'),
+  medium: buildNormalPrompt([]),
+  high: buildNormalPrompt(NORMAL_HIGH_RULES)
+}
+
+/**
+ * Effective normal-mode Auto Cleanup intensity. The legacy cleanupEnabled
+ * master toggle is honored as a hard 'none' when false; settings objects
+ * predating cleanupIntensity fall back to 'medium' (the old enabled behavior).
+ */
+export function resolveNormalIntensity(settings: OwenFlowSettings): CleanupIntensity {
+  if (settings.cleanupEnabled === false) return 'none'
+  return settings.cleanupIntensity ?? 'medium'
+}
+
 // Terse prompts on purpose: a reasoning model (MiniMax) measurably thinks (and
 // waits) less with tight instructions; Groq is unaffected.
 const SYSTEM_PROMPTS: Record<Exclude<FlowMode, 'translate'>, string> = {
-  normal: [
-    'Rewrite this raw speech-to-text dictation transcript:',
-    'remove filler words (um, uh, like, you know, sort of) and false starts,',
-    'fix punctuation and casing, and restructure into well-formed sentences that make sense in context —',
-    'stay faithful to what was said; never add, answer, or summarize.',
-    'Output ONLY the rewritten text — no quotes, labels or commentary.'
-  ].join(' '),
+  normal: NORMAL_PROMPTS.medium,
   vibe: [
-    'You are a prompt engineer. Transform this raw spoken developer dictation into the best possible prompt for an AI coding assistant.',
+    'You are a senior prompt engineer. Transform this raw spoken developer dictation into a precise prompt for an AI coding agent (Claude Code, Cursor).',
     'Rules:',
-    '1. Write as direct instructions to the AI (imperative: "Add...", "Refactor...", "Fix...").',
-    '2. Lead with a one-sentence objective. If the dictation has multiple requirements or details, list them as "- " bullets under the objective; if it is a single simple ask, one tight paragraph.',
-    '3. Preserve EVERY technical specific exactly as spoken: names, file paths, identifiers, versions, numbers, constraints.',
-    '4. Resolve self-corrections — when the speaker changes their mind ("actually, make it X instead"), keep only the final intent.',
-    '5. Make vague references concrete only when the dictation itself makes them clear; NEVER invent requirements, technologies, or details that were not said.',
-    '6. End with expected behavior or acceptance criteria when the speaker described an outcome.',
-    'Output ONLY the finished prompt text — no preamble, no commentary, no markdown code fences.'
+    '1. Imperative voice addressed to the coding agent ("Add...", "Fix...", "Refactor...").',
+    '2. Lead with a single-sentence objective stating the outcome. If the dictation has multiple requirements, constraints, or details, group them as "- " bullets under the objective (requirements first, then constraints, then edge cases); a single simple ask stays one tight paragraph.',
+    '3. Preserve EVERY technical token exactly as spoken: file paths, function/variable names, package names, versions, flags, numbers, error messages. Keep code identifiers verbatim (backticks allowed).',
+    '4. Resolve self-corrections to the final intent; drop thinking-out-loud detours the speaker abandoned.',
+    '5. Make vague references ("that function", "the thing") concrete ONLY when the dictation itself defines them; NEVER invent requirements, tech choices, or acceptance criteria that were not said.',
+    '6. If the speaker described expected behavior or success conditions, end with an "Expected behavior:" line.',
+    '7. If the speaker was uncertain ("maybe", "I think", "or whatever works"), keep the decision open (e.g. "choose the best approach") — never fabricate a choice.',
+    'Output ONLY the finished prompt as plain text — no preamble, no commentary, no markdown code fences.'
   ].join('\n'),
   formal: [
-    'Rewrite this raw spoken dictation into polished professional prose suitable for a message to a client.',
-    'Courteous, clear, well structured; remove slang, filler words and false starts.',
-    'Keep the meaning exactly — do NOT add promises, facts or details that were not said.',
-    'Output ONLY the rewritten text — no quotes, labels or commentary.'
-  ].join(' ')
+    'Rewrite this raw spoken dictation as a polished, client-ready professional message.',
+    'Rules:',
+    '1. Courteous, clear, well-structured paragraphs.',
+    '2. Remove slang, filler words, and false starts; resolve self-corrections to the final version.',
+    '3. Keep every commitment, fact, name, number, and date exactly as spoken — do NOT add promises, dates, or details that were not said.',
+    '4. Natural business English, not stiff corporate-speak.',
+    'Output ONLY the rewritten text — no quotes, labels, or commentary.'
+  ].join('\n')
 }
 
 /** The system prompt for a mode; translate is dynamic (depends on the target). */
@@ -94,10 +176,16 @@ function systemPromptFor(mode: FlowMode, settings: OwenFlowSettings): string {
   if (mode === 'translate') {
     const target = settings.translateTarget?.trim() || 'English'
     return [
-      `Translate the following dictation into ${target}.`,
-      'Output ONLY the translation — no quotes, labels, or commentary.',
-      'Preserve meaning and tone; do not add or omit content.'
+      `Translate the following dictation into ${target} with natural, native phrasing.`,
+      'Keep names, technical terms, numbers, and formatting as-is.',
+      'Do not add, omit, or explain anything.',
+      'Output ONLY the translation — no quotes, labels, or commentary.'
     ].join(' ')
+  }
+  if (mode === 'normal') {
+    const intensity = resolveNormalIntensity(settings)
+    // 'none' never gets here (cleanup() returns raw first) — medium fallback.
+    return NORMAL_PROMPTS[intensity === 'none' ? 'medium' : intensity]
   }
   return SYSTEM_PROMPTS[mode]
 }
@@ -121,9 +209,11 @@ function resolveProvider(
 export async function cleanup(raw: string, settings: OwenFlowSettings, extraSystem?: string): Promise<string> {
   const mode: FlowMode = settings.flowMode ?? 'normal'
 
-  // Normal mode is an opt-in cleanup pass; vibe/formal REQUIRE the API and
-  // ignore the cleanupEnabled toggle (no key → graceful raw fallback).
-  if (mode === 'normal' && !settings.cleanupEnabled) return raw
+  // Normal mode is an opt-in cleanup pass gated by the Auto Cleanup intensity
+  // ('none' = raw verbatim paste; the legacy cleanupEnabled=false is honored
+  // as 'none'). Vibe/formal/translate are modes, not cleanup — they REQUIRE
+  // the API, ignore the intensity (no key → graceful raw fallback).
+  if (mode === 'normal' && resolveNormalIntensity(settings) === 'none') return raw
   if (!raw.trim()) return raw
 
   // Very short normal-mode dictations ("yes", "send it", "on my way") have

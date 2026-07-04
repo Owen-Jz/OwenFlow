@@ -9,6 +9,7 @@ const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
   model: 'small',
   language: '',
   cleanupEnabled: true,
+  cleanupIntensity: 'medium',
   cleanupProvider: 'minimax',
   minimaxApiKey: 'test-key',
   minimaxGroupId: '',
@@ -65,28 +66,60 @@ describe('cleanup', () => {
     const systemPrompt = (): string =>
       JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content
 
-    it('normal mode asks for filler removal AND sentence restructuring, staying faithful', async () => {
+    it('normal mode is a Wispr-style auto-edit: fillers, self-corrections, dictated punctuation, formatting', async () => {
       fetchMock.mockResolvedValue(okResponse('x'))
       await cleanup(RAW, settings({ flowMode: 'normal' }))
-      expect(systemPrompt()).toContain('remove filler words')
-      expect(systemPrompt()).toContain('restructure into well-formed sentences')
-      expect(systemPrompt()).toContain('faithful to what was said')
-      expect(systemPrompt()).not.toContain('verbatim')
+      expect(systemPrompt()).toContain('Remove filler words')
+      expect(systemPrompt()).toContain('self-corrections')
+      expect(systemPrompt()).toContain('homophone')
+      expect(systemPrompt()).toContain('"new line"')
+      expect(systemPrompt()).toContain('john.smith@gmail.com')
+      expect(systemPrompt()).toContain('25%')
     })
 
-    it('vibe mode uses the AI-coding-prompt rewrite prompt', async () => {
+    it('normal mode preserves voice and never adds/answers/summarizes (cleanup, not rewriting)', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ flowMode: 'normal' }))
+      expect(systemPrompt()).toContain('cleanup, not rewriting')
+      expect(systemPrompt()).toContain("speaker's voice")
+      expect(systemPrompt()).toContain('do not formalize casual speech')
+      expect(systemPrompt()).toContain('Never add, answer, or summarize')
+    })
+
+    it('vibe mode targets an AI coding agent with objective + bullets structure', async () => {
       fetchMock.mockResolvedValue(okResponse('x'))
       await cleanup(RAW, settings({ flowMode: 'vibe' }))
-      expect(systemPrompt()).toContain('AI coding assistant')
-      expect(systemPrompt()).toContain('Preserve EVERY technical specific')
+      expect(systemPrompt()).toContain('AI coding agent')
+      expect(systemPrompt()).toContain('single-sentence objective')
+      expect(systemPrompt()).toContain('"- " bullets')
+      expect(systemPrompt()).toContain('Imperative voice')
+    })
+
+    it('vibe mode preserves technical tokens (file paths etc.) and resolves self-corrections', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ flowMode: 'vibe' }))
+      expect(systemPrompt()).toContain('technical token')
+      expect(systemPrompt()).toContain('file paths')
+      expect(systemPrompt()).toContain('error messages')
+      expect(systemPrompt()).toContain('self-corrections')
+      expect(systemPrompt()).toContain('NEVER invent')
+    })
+
+    it('vibe mode ends with expected behavior when stated, keeps uncertainty open, plain text only', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ flowMode: 'vibe' }))
+      expect(systemPrompt()).toContain('Expected behavior:')
+      expect(systemPrompt()).toContain('keep the decision open')
       expect(systemPrompt()).toContain('no markdown code fences')
     })
 
-    it('formal mode uses the client-message prompt', async () => {
+    it('formal mode uses the client-message prompt without invented commitments', async () => {
       fetchMock.mockResolvedValue(okResponse('x'))
       await cleanup(RAW, settings({ flowMode: 'formal' }))
       expect(systemPrompt()).toContain('client')
       expect(systemPrompt()).toContain('professional')
+      expect(systemPrompt()).toContain('commitment')
+      expect(systemPrompt()).toContain('not stiff corporate-speak')
     })
   })
 
@@ -121,6 +154,95 @@ describe('cleanup', () => {
         'On my way.'
       )
       expect(fetchMock).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('auto cleanup intensity (normal mode)', () => {
+    const systemPrompt = (): string =>
+      JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content
+
+    it('none skips the LLM entirely — raw verbatim, no fetch', async () => {
+      await expect(cleanup(RAW, settings({ cleanupIntensity: 'none' }))).resolves.toBe(RAW)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('light prompt only strips fillers + basic punctuation — no self-correction resolution, no reformatting', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ cleanupIntensity: 'light' }))
+      expect(systemPrompt()).toContain('ONLY remove filler words')
+      expect(systemPrompt()).toContain('basic punctuation and sentence casing')
+      expect(systemPrompt()).toContain('Keep every word as spoken')
+      expect(systemPrompt()).toContain('do not resolve self-corrections')
+      expect(systemPrompt()).toContain('do not reformat numbers, emails, or URLs')
+      // None of the medium auto-edit machinery leaks into light.
+      expect(systemPrompt()).not.toContain('john.smith@gmail.com')
+      expect(systemPrompt()).not.toContain('"new line"')
+      expect(systemPrompt()).not.toContain('keep only the final version')
+    })
+
+    it('medium uses the full Wispr-style auto-edit prompt without high-only rules', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ cleanupIntensity: 'medium' }))
+      expect(systemPrompt()).toContain('Remove filler words')
+      expect(systemPrompt()).toContain('self-corrections')
+      expect(systemPrompt()).toContain('john.smith@gmail.com')
+      expect(systemPrompt()).not.toContain('run-on')
+      expect(systemPrompt()).not.toContain('bullet list')
+      expect(systemPrompt()).not.toContain('grammar')
+    })
+
+    it('high prompt = medium + run-on restructuring, list formatting and grammar fixes', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ cleanupIntensity: 'high' }))
+      // Everything medium does…
+      expect(systemPrompt()).toContain('Remove filler words')
+      expect(systemPrompt()).toContain('self-corrections')
+      expect(systemPrompt()).toContain('john.smith@gmail.com')
+      // …plus the high-only readability rules…
+      expect(systemPrompt()).toContain('Restructure run-on sentences')
+      expect(systemPrompt()).toContain('"- " bullet list')
+      expect(systemPrompt()).toContain('numbered list')
+      expect(systemPrompt()).toContain('Fix grammar')
+      // …with the guard rails intact.
+      expect(systemPrompt()).toContain("PRESERVE the speaker's voice")
+      expect(systemPrompt()).toContain('Never add, answer, or summarize')
+    })
+
+    it('missing cleanupIntensity (legacy settings object) falls back to medium', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      await cleanup(RAW, settings({ cleanupIntensity: undefined }))
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(systemPrompt()).toContain('john.smith@gmail.com')
+      expect(systemPrompt()).not.toContain('run-on')
+    })
+
+    it('legacy cleanupEnabled=false is honored as none even with a higher intensity set', async () => {
+      await expect(
+        cleanup(RAW, settings({ cleanupEnabled: false, cleanupIntensity: 'high' }))
+      ).resolves.toBe(RAW)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('the ≤3-word skip still applies at light and high', async () => {
+      await expect(cleanup('send it now', settings({ cleanupIntensity: 'light' }))).resolves.toBe(
+        'send it now'
+      )
+      await expect(cleanup('send it now', settings({ cleanupIntensity: 'high' }))).resolves.toBe(
+        'send it now'
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('vibe/formal/translate are modes, not cleanup — they ignore intensity none', async () => {
+      fetchMock.mockResolvedValue(okResponse('x'))
+      for (const flowMode of ['vibe', 'formal', 'translate'] as const) {
+        await cleanup(RAW, settings({ flowMode, cleanupIntensity: 'none' }))
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      // And their prompts are the mode prompts, not a normal-intensity variant.
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content).toContain(
+        'AI coding agent'
+      )
     })
   })
 
@@ -330,6 +452,8 @@ describe('cleanup', () => {
       const body = JSON.parse(fetchMock.mock.calls[0][1].body)
       expect(body.messages[0].content).toContain('Spanish')
       expect(body.messages[0].content.toLowerCase()).toContain('translate')
+      expect(body.messages[0].content).toContain('native phrasing')
+      expect(body.messages[0].content).toContain('technical terms')
       expect(fetchMock.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
     })
     it('defaults the target to English when translateTarget is empty', async () => {

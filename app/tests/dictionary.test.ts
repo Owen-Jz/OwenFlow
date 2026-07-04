@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyReplacements, parseDictionary } from '../src/main/dictionary'
+import { applyReplacements, buildBiasPrompt, parseDictionary } from '../src/main/dictionary'
 
 describe('parseDictionary', () => {
   it('splits bias words from wrong=>right replacement pairs', () => {
@@ -22,6 +22,43 @@ describe('parseDictionary', () => {
     const { promptWords, replacements } = parseDictionary(['=>nothing'])
     expect(replacements).toEqual([])
     expect(promptWords).toEqual(['=>nothing'])
+  })
+})
+
+describe('buildBiasPrompt', () => {
+  it('returns undefined for empty input', () => {
+    expect(buildBiasPrompt([])).toBeUndefined()
+  })
+
+  it('returns undefined when all entries are blank', () => {
+    expect(buildBiasPrompt(['', '   '])).toBeUndefined()
+  })
+
+  it('wraps words in a natural punctuated sentence', () => {
+    expect(buildBiasPrompt(['Cresio', 'Fluxboard', 'ZEAL'])).toBe(
+      'Vocabulary: Cresio, Fluxboard, ZEAL.'
+    )
+  })
+
+  it('trims whitespace around words', () => {
+    expect(buildBiasPrompt(['  ZEAL  ', 'Owen Digitals'])).toBe('Vocabulary: ZEAL, Owen Digitals.')
+  })
+
+  it('caps the prompt near 600 chars by dropping overflow words from the end', () => {
+    // 100 ten-char words ≈ 1200 chars joined — well past the cap.
+    const words = Array.from({ length: 100 }, (_, i) => `word${String(i).padStart(6, '0')}`)
+    const prompt = buildBiasPrompt(words)
+    expect(prompt).toBeDefined()
+    expect(prompt!.length).toBeLessThanOrEqual(600)
+    // The FIRST dictionary entries survive; overflow drops from the end.
+    expect(prompt!.startsWith('Vocabulary: word000000, word000001')).toBe(true)
+    expect(prompt!.endsWith('.')).toBe(true)
+    expect(prompt).not.toContain('word000099')
+  })
+
+  it('always keeps the first word even if it alone exceeds the cap', () => {
+    const huge = 'x'.repeat(700)
+    expect(buildBiasPrompt([huge])).toBe(`Vocabulary: ${huge}.`)
   })
 })
 

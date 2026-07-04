@@ -23,7 +23,7 @@ vi.mock('electron-store', () => ({
   }
 }))
 
-import { DEFAULT_SETTINGS, getSettings } from '../src/main/config'
+import { DEFAULT_SETTINGS, deriveCleanupIntensity, getSettings } from '../src/main/config'
 
 describe('config theme setting', () => {
   it('defaults theme to dark', () => {
@@ -57,6 +57,41 @@ describe('config cleanup provider', () => {
     expect(schema.cleanupProvider.enum).toEqual(['groq', 'minimax'])
     expect(schema.cleanupProvider.default).toBe('groq')
     expect(schema.groqModel.default).toBe('llama-3.3-70b-versatile')
+  })
+})
+
+describe('config auto cleanup intensity', () => {
+  it('fresh installs default cleanupIntensity to medium (and the legacy toggle to on)', () => {
+    expect(DEFAULT_SETTINGS.cleanupIntensity).toBe('medium')
+    expect(DEFAULT_SETTINGS.cleanupEnabled).toBe(true)
+    expect(getSettings().cleanupIntensity).toBe('medium')
+  })
+
+  it('declares the cleanupIntensity schema as none | light | medium | high with medium default', () => {
+    const schema = captured.options?.schema as Record<string, { enum?: string[]; default?: string }>
+    expect(schema.cleanupIntensity.enum).toEqual(['none', 'light', 'medium', 'high'])
+    expect(schema.cleanupIntensity.default).toBe('medium')
+  })
+
+  describe('migration (deriveCleanupIntensity on the raw pre-store file)', () => {
+    it('config without the field and cleanupEnabled true derives medium', () => {
+      expect(deriveCleanupIntensity({ cleanupEnabled: true })).toBe('medium')
+    })
+
+    it('config without the field and cleanupEnabled false derives none', () => {
+      expect(deriveCleanupIntensity({ cleanupEnabled: false })).toBe('none')
+    })
+
+    it('config without either field derives none (old default was cleanup off)', () => {
+      expect(deriveCleanupIntensity({})).toBe('none')
+    })
+
+    it('config that already has cleanupIntensity is not migrated', () => {
+      expect(deriveCleanupIntensity({ cleanupIntensity: 'light', cleanupEnabled: false })).toBe(
+        undefined
+      )
+      expect(deriveCleanupIntensity({ cleanupIntensity: 'none' })).toBe(undefined)
+    })
   })
 })
 

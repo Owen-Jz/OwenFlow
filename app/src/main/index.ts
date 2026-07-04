@@ -63,7 +63,7 @@ import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
-import { applyReplacements } from './dictionary'
+import { applyReplacements, buildBiasPrompt } from './dictionary'
 import type { OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -242,7 +242,7 @@ app.whenReady().then(async () => {
 
   initTranscribeQueue({
     transcribe: (wav, s) =>
-      transcribe(wav, parseDictionary(s.dictionary).promptWords.join(', ') || undefined, s.language || undefined),
+      transcribe(wav, buildBiasPrompt(parseDictionary(s.dictionary).promptWords), s.language || undefined),
     deliver: (text, item) => {
       void (async () => {
         let final = text
@@ -265,7 +265,7 @@ app.whenReady().then(async () => {
     appendHistory: history.append,
     transcribe: (wav, settings) => {
       const { promptWords } = parseDictionary(settings.dictionary)
-      return transcribe(wav, promptWords.join(', ') || undefined, settings.language || undefined)
+      return transcribe(wav, buildBiasPrompt(promptWords), settings.language || undefined)
     },
     cleanup,
     inject,
@@ -282,7 +282,7 @@ app.whenReady().then(async () => {
     transcribe: (wav, s) =>
       transcribe(
         wav,
-        parseDictionary(s.dictionary).promptWords.join(', ') || undefined,
+        buildBiasPrompt(parseDictionary(s.dictionary).promptWords),
         s.language || undefined
       ),
     cleanup,
@@ -298,7 +298,7 @@ app.whenReady().then(async () => {
     transcribe: (wav, s) =>
       transcribe(
         wav,
-        parseDictionary(s.dictionary).promptWords.join(', ') || undefined,
+        buildBiasPrompt(parseDictionary(s.dictionary).promptWords),
         s.language || undefined
       ),
     copySelection,

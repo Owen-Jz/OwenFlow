@@ -17,6 +17,7 @@ const baseSettings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings =
   model: 'small',
   language: 'en',
   cleanupEnabled: true,
+  cleanupIntensity: 'medium',
   cleanupProvider: 'groq',
   minimaxApiKey: 'key',
   minimaxGroupId: '',
@@ -110,6 +111,31 @@ describe('pipeline', () => {
     await runDictation(deps)
     expect(deps.cleanup).not.toHaveBeenCalled()
     expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
+  })
+
+  it('normal mode skips cleanup when cleanupIntensity is none (raw verbatim)', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ flowMode: 'normal', cleanupIntensity: 'none' }), order)
+    await runDictation(deps)
+    expect(deps.cleanup).not.toHaveBeenCalled()
+    expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
+  })
+
+  it('normal mode wants cleanup at every non-none intensity', async () => {
+    for (const cleanupIntensity of ['light', 'medium', 'high'] as const) {
+      const deps = makeDeps(baseSettings({ flowMode: 'normal', cleanupIntensity }), [])
+      await runDictation(deps)
+      expect(deps.cleanup).toHaveBeenCalledTimes(1)
+      // The effective settings (intensity included) reach the cleanup dep.
+      expect(deps.cleanup.mock.calls[0][1].cleanupIntensity).toBe(cleanupIntensity)
+    }
+  })
+
+  it('vibe mode runs cleanup even when cleanupIntensity is none (modes ignore intensity)', async () => {
+    const order: string[] = []
+    const deps = makeDeps(baseSettings({ flowMode: 'vibe', cleanupIntensity: 'none' }), order)
+    await runDictation(deps)
+    expect(deps.cleanup).toHaveBeenCalledTimes(1)
   })
 
   it('vibe mode runs cleanup even when cleanupEnabled is false', async () => {

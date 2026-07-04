@@ -146,9 +146,15 @@ async def transcribe(
             beam_size=5,
             best_of=5,
             condition_on_previous_text=False,
-            # keep VAD but don't let short thinking-pauses drop words
+            # slightly below the 0.6 default: push-to-talk clips are almost
+            # always speech, so lean toward keeping borderline segments rather
+            # than silently dropping quiet first/last words
+            no_speech_threshold=0.5,
+            # keep VAD but don't let short thinking-pauses drop words, and pad
+            # each detected speech region so VAD doesn't shave word edges
+            # (unpadded VAD routinely eats soft plosives at segment boundaries)
             vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 300},
+            vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 400},
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
     finally:

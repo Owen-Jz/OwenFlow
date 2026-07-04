@@ -13,6 +13,7 @@ import { applyReplacements, parseDictionary } from './dictionary'
 import { matchSnippet, parseSnippets } from './snippets'
 import { activeSessionMode, parseSessionTones } from './sessions'
 import { matchProfile, applyProfileTransforms, profilePromptRule, profileMode } from './profiles'
+import { resolveNormalIntensity } from './cleanup'
 import { isCommandActive } from './command-channel'
 
 // ─── Dependency contract ─────────────────────────────────────────────────────
@@ -199,10 +200,13 @@ export async function stopDictation(): Promise<void> {
 
   // 3. AI cleanup / mode rewrite — never blocks (cleanup() already falls back
   //    to raw on any error, but guard here too in case a mock/dep throws).
-  //    Normal mode respects the cleanupEnabled toggle; vibe/formal ALWAYS go
-  //    through cleanup() (which falls back to raw when no API key is set).
+  //    Normal mode respects the Auto Cleanup intensity (anything but 'none'
+  //    wants the pass; legacy cleanupEnabled=false counts as 'none');
+  //    vibe/formal/translate ALWAYS go through cleanup() (which falls back to
+  //    raw when no API key is set).
   let cleaned = raw
-  const wantsCleanup = effective.flowMode !== 'normal' || effective.cleanupEnabled
+  const wantsCleanup =
+    effective.flowMode !== 'normal' || resolveNormalIntensity(effective) !== 'none'
   if (wantsCleanup && deps.cleanup) {
     try {
       cleaned = (await deps.cleanup(raw, effective, profile ? profilePromptRule(profile) || undefined : undefined)) || raw

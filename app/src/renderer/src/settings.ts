@@ -13,6 +13,7 @@ import '@fontsource/jetbrains-mono/700.css'
 
 import type {
   AppProfile,
+  CleanupIntensity,
   FlowMode,
   FolderCount,
   HistoryEntry,
@@ -98,7 +99,6 @@ const fMode = $<HTMLSelectElement>('f-mode')
 const fContinuous = $<HTMLInputElement>('f-continuous')
 const fModel = $<HTMLSelectElement>('f-model')
 const fLanguage = $<HTMLInputElement>('f-language')
-const fCleanup = $<HTMLInputElement>('f-cleanup')
 const fCleanupProvider = $<HTMLSelectElement>('f-cleanup-provider')
 const fMinimaxKey = $<HTMLInputElement>('f-minimax-key')
 const fMinimaxGroup = $<HTMLInputElement>('f-minimax-group')
@@ -122,6 +122,33 @@ function applyProviderVisibility(): void {
 }
 
 fCleanupProvider.addEventListener('change', applyProviderVisibility)
+
+// ─── Auto Cleanup intensity (Normal mode) ───────────────────────────────────
+
+const intensityOpts = Array.from(
+  document.querySelectorAll<HTMLButtonElement>('.seg-opt[data-intensity-opt]')
+)
+const intensityDesc = $('intensity-desc')
+let selectedIntensity: CleanupIntensity = 'medium'
+
+const INTENSITY_DESCRIPTIONS: Record<CleanupIntensity, string> = {
+  none: 'Off — pastes the raw transcript verbatim, no AI pass.',
+  light: 'Removes filler words and adds basic punctuation — every word stays as spoken.',
+  medium: 'Full auto-edit: fillers, self-corrections, dictated punctuation, number/email formatting.',
+  high: 'Medium plus restructuring: breaks up run-ons, formats spoken lists, fixes grammar.'
+}
+
+function selectIntensity(level: CleanupIntensity): void {
+  selectedIntensity = level
+  for (const opt of intensityOpts) {
+    opt.classList.toggle('active', opt.dataset.intensityOpt === level)
+  }
+  intensityDesc.textContent = INTENSITY_DESCRIPTIONS[level]
+}
+
+for (const opt of intensityOpts) {
+  opt.addEventListener('click', () => selectIntensity(opt.dataset.intensityOpt as CleanupIntensity))
+}
 
 // "Test & compare": time both providers (uses saved keys) and show the result.
 $('btn-compare').addEventListener('click', async () => {
@@ -381,7 +408,8 @@ function fillForm(s: OwenFlowSettings): void {
   fContinuous.checked = s.continuousMode
   fModel.value = s.model
   fLanguage.value = s.language
-  fCleanup.checked = s.cleanupEnabled
+  // Settings predating cleanupIntensity map the legacy toggle: on → medium, off → none.
+  selectIntensity(s.cleanupIntensity ?? (s.cleanupEnabled ? 'medium' : 'none'))
   fCleanupProvider.value = s.cleanupProvider ?? 'groq'
   fMinimaxKey.value = s.minimaxApiKey
   fMinimaxGroup.value = s.minimaxGroupId
@@ -417,7 +445,9 @@ function readForm(): Partial<OwenFlowSettings> {
     flowMode: selectedFlowMode,
     model: fModel.value as OwenFlowSettings['model'],
     language: fLanguage.value.trim(),
-    cleanupEnabled: fCleanup.checked,
+    cleanupIntensity: selectedIntensity,
+    // Legacy master toggle kept in sync so older readers keep working.
+    cleanupEnabled: selectedIntensity !== 'none',
     cleanupProvider: fCleanupProvider.value === 'minimax' ? 'minimax' : 'groq',
     minimaxApiKey: fMinimaxKey.value.trim(),
     minimaxGroupId: fMinimaxGroup.value.trim(),

@@ -21,6 +21,22 @@ export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3' | '
 /** Which LLM backend runs the refinement/cleanup pass. */
 export type CleanupProvider = 'groq' | 'minimax'
 
+/**
+ * Auto Cleanup intensity for Normal mode (Wispr-Flow-style control against
+ * over-editing). Vibe/formal/translate are modes, not cleanup — they ignore it.
+ *  - none:   no LLM pass at all; the raw transcript is pasted verbatim.
+ *  - light:  ONLY remove filler words and add basic punctuation/casing —
+ *            every word stays as spoken (no self-correction resolution,
+ *            no number/email reformatting).
+ *  - medium: full Wispr-style auto-edit — fillers, false starts, spoken
+ *            self-corrections resolved, dictated punctuation, number/email/URL
+ *            formatting — while preserving the speaker's voice (the default).
+ *  - high:   medium plus restructuring — breaks up run-on sentences, formats
+ *            spoken enumerations ("first… second…") as lists, fixes grammar —
+ *            still preserving voice and never adding content.
+ */
+export type CleanupIntensity = 'none' | 'light' | 'medium' | 'high'
+
 /** Result of timing one provider's refinement round-trip ("cleanup:benchmark"). */
 export interface ProviderTiming {
   provider: CleanupProvider
@@ -64,7 +80,15 @@ export interface OwenFlowSettings {
   model: WhisperModel
   /** empty string = auto-detect */
   language: string
+  /**
+   * Legacy master toggle for the Normal-mode cleanup pass. Superseded by
+   * cleanupIntensity (off maps to 'none', on to 'medium' during migration)
+   * but still honored as a hard off-switch when false, and kept in sync by
+   * the settings UI so older readers (e.g. continuous mode) stay correct.
+   */
   cleanupEnabled: boolean
+  /** How aggressively Normal mode is auto-edited (see CleanupIntensity). */
+  cleanupIntensity: CleanupIntensity
   /** Which LLM provider runs the cleanup/refinement pass. */
   cleanupProvider: CleanupProvider
   minimaxApiKey: string
