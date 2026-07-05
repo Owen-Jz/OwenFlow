@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { benchmarkProvider, benchmarkProviders, cleanup, runCommand, summarize } from '../src/main/cleanup'
+import {
+  benchmarkProvider,
+  benchmarkProviders,
+  cleanup,
+  driftsFromTranscript,
+  runCommand,
+  summarize
+} from '../src/main/cleanup'
 import type { OwenFlowSettings } from '../src/shared/types'
 
 const settings = (patch: Partial<OwenFlowSettings> = {}): OwenFlowSettings => ({
@@ -57,10 +64,104 @@ describe('cleanup', () => {
     expect(init.headers.Authorization).toBe('Bearer test-key')
     const body = JSON.parse(init.body)
     expect(body.model).toBe('MiniMax-M2.5')
-    expect(body.messages[1].content).toBe('um hello there uh world')
+    // The transcript rides inside <<< >>> delimiters so the model can't
+    // mistake it for a chat message addressed to itself.
+    expect(body.messages[1].content).toBe('<<<\num hello there uh world\n>>>')
     // Latency tuning (measured 2026-06-12): deterministic + capped reasoning.
     expect(body.temperature).toBe(0)
     expect(body.max_tokens).toBe(1500)
+  })
+
+  // Regression: dictated questions/instructions were being ANSWERED by the
+  // model instead of transcribed ("give me the stages of the hackathon" →
+  // pasted a list of stages). Two defenses: the transcript contract in every
+  // system prompt + a verbatim guard on normal-mode output.
+  describe('never answers the transcript', () => {
+    const systemPrompt = (): string =>
+      JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content
+
+    it.each(['normal', 'vibe', 'formal', 'translate'] as const)(
+      '%s system prompt carries the transcript contract',
+      async (flowMode) => {
+        fetchMock.mockResolvedValue(okResponse('x'))
+        await cleanup(RAW, settings({ flowMode }))
+        expect(systemPrompt()).toContain('between <<< and >>>')
+        expect(systemPrompt()).toContain('NEVER a question for you to answer')
+      }
+    )
+
+    it('normal mode: an answer-shaped reply is rejected and raw is pasted', async () => {
+      const raw = 'give me the different stages of the hackathon right now'
+      fetchMock.mockResolvedValue(
+        okResponse(
+          'The stages are registration phase where teams sign up, followed by ideation, then the build sprint and finally demo day judging.'
+        )
+      )
+      await expect(cleanup(raw, settings({ flowMode: 'normal' }))).resolves.toBe(raw)
+    })
+
+    it('normal mode: a faithful cleanup passes the guard', async () => {
+      fetchMock.mockResolvedValue(okResponse('Hello there, world.'))
+      await expect(cleanup('um hello there uh world', settings())).resolves.toBe(
+        'Hello there, world.'
+      )
+    })
+
+    it('vibe mode is NOT guarded (restructuring legitimately introduces new words)', async () => {
+      const rewrite = 'Refactor the retry logic into a shared helper module.'
+      fetchMock.mockResolvedValue(okResponse(rewrite))
+      await expect(
+        cleanup('um so take that retry thing and make it shared somehow', settings({ flowMode: 'vibe' }))
+      ).resolves.toBe(rewrite)
+    })
+
+    it('echoed delimiters are stripped from the reply', async () => {
+      fetchMock.mockResolvedValue(okResponse('<<<\nHello there, world.\n>>>'))
+      await expect(cleanup('um hello there uh world', settings())).resolves.toBe(
+        'Hello there, world.'
+      )
+    })
+  })
+
+  describe('driftsFromTranscript (verbatim guard)', () => {
+    it('accepts pure filler removal', () => {
+      expect(
+        driftsFromTranscript('um so basically we should ship on friday', 'So basically we should ship on Friday.')
+      ).toBe(false)
+    })
+
+    it('accepts medium-style reformatting (novel tokens like 25% or emails)', () => {
+      expect(
+        driftsFromTranscript(
+          'send it to john dot smith at gmail dot com with twenty five percent off',
+          'Send it to john.smith@gmail.com with 25% off.'
+        )
+      ).toBe(false)
+    })
+
+    it('rejects an answer (mostly novel words)', () => {
+      expect(
+        driftsFromTranscript(
+          'what are the stages of the hackathon',
+          'Registration, ideation, build sprint, and demo day judging.'
+        )
+      ).toBe(true)
+    })
+
+    it('rejects inflated output (model elaborating)', () => {
+      expect(
+        driftsFromTranscript(
+          'summarize the plan for me quickly',
+          'The plan is to first register the team, then build the MVP during the sprint week, then prepare the demo, and finally present to the judges on demo day for the final evaluation round.'
+        )
+      ).toBe(true)
+    })
+
+    it('accepts short faithful outputs (shrinkage is normal)', () => {
+      expect(
+        driftsFromTranscript('um yes uh that works for me you know', 'Yes, that works for me.')
+      ).toBe(false)
+    })
   })
 
   describe('per-mode system prompts', () => {
@@ -379,10 +480,12 @@ describe('cleanup', () => {
     // silently pasting raw. (Owen hit this live: Groq became the default
     // provider but only his MiniMax key was saved → vibe mode never ran.)
     it('falls back to minimax when groq is selected but only minimax has a key', async () => {
-      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      // Reply must stay faithful to RAW — normal mode's verbatim guard rejects
+      // outputs built from words the user never said.
+      fetchMock.mockResolvedValue(okResponse('So raw text here.'))
       await expect(
         cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: '' }))
-      ).resolves.toBe('Cleaned.')
+      ).resolves.toBe('So raw text here.')
       const [url, init] = fetchMock.mock.calls[0]
       expect(url).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
       expect(init.headers.Authorization).toBe('Bearer test-key')
@@ -390,10 +493,10 @@ describe('cleanup', () => {
     })
 
     it('falls back to groq when minimax is selected but only groq has a key', async () => {
-      fetchMock.mockResolvedValue(okResponse('Cleaned.'))
+      fetchMock.mockResolvedValue(okResponse('So raw text here.'))
       await expect(
         cleanup(RAW, settings({ cleanupProvider: 'minimax', minimaxApiKey: '' }))
-      ).resolves.toBe('Cleaned.')
+      ).resolves.toBe('So raw text here.')
       const [url, init] = fetchMock.mock.calls[0]
       expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
       expect(init.headers.Authorization).toBe('Bearer groq-key')
