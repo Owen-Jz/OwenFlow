@@ -145,6 +145,11 @@ export interface OwenFlowSettings {
    * Empty string = disabled.
    */
   modeHotkey: string
+  /**
+   * uiohook keycode name for the meeting-mode hotkey: each tap toggles the
+   * meeting recorder on/off. Empty string = disabled.
+   */
+  meetingHotkey: string
   /** Long-form draft mode: stream segments on pauses. */
   continuousMode: boolean
   /** ZEAL voice-command endpoint (POST /api/voice). */
@@ -209,7 +214,71 @@ export interface FolderCount {
   count: number
 }
 
-export type PillStateName = 'idle' | 'recording' | 'transcribing' | 'done' | 'error' | 'notice'
+// ─── Meeting mode ────────────────────────────────────────────────────────────
+
+/**
+ * Which capture stream a meeting segment came from:
+ *  - you:  the microphone (Owen's voice)
+ *  - them: Windows loopback / system audio (everyone else in the call —
+ *          whatever plays on the output device)
+ */
+export type MeetingStream = 'you' | 'them'
+
+/**
+ * One transcribed meeting segment — a single line of
+ * <userData>/meetings/<id>/transcript.jsonl. Appended to disk the moment its
+ * transcription lands (crash-safety: a crash loses at most the in-flight
+ * segment, never the transcript so far).
+ */
+export interface MeetingEntry {
+  /** Segment start, epoch ms (segments interleave chronologically by this). */
+  t: number
+  speaker: MeetingStream
+  /** Transcript text; '[inaudible]' marks a segment that failed twice. */
+  text: string
+}
+
+/**
+ * <userData>/meetings/<id>/meta.json. Written at meeting start ({id,
+ * startedAt} only) so even a crash mid-meeting leaves a listable meeting;
+ * endedAt/durationMs land on stop, words on a throttle while running, and
+ * summary lazily on the first meetings.summarize(id) call.
+ */
+export interface MeetingMeta {
+  /** Local-time meeting id, "YYYY-MM-DD-HHmmss" — also the folder name. */
+  id: string
+  /** epoch ms */
+  startedAt: number
+  /** epoch ms; absent = still running (or the app crashed mid-meeting). */
+  endedAt?: number
+  durationMs?: number
+  /** Total transcript words so far (excludes '[inaudible]' markers). */
+  words?: number
+  /** LLM meeting summary; generated + persisted on demand (meetings.summarize). */
+  summary?: string
+  /**
+   * epoch ms of the last meta write (stamped centrally by writeMeta) — end of
+   * meeting, word-count refresh, or a later summary. The Meetings UI shows it
+   * as "Updated" next to the recorded date.
+   */
+  updatedAt?: number
+}
+
+/** Live meeting snapshot ("meeting:state" invoke AND push payload). */
+export interface MeetingStateInfo {
+  active: boolean
+  /** epoch ms of the running meeting, or null when none is active. */
+  startedAt: number | null
+}
+
+export type PillStateName =
+  | 'idle'
+  | 'recording'
+  | 'transcribing'
+  | 'done'
+  | 'error'
+  | 'notice'
+  | 'meeting'
 
 /**
  * Compact live audio level frame emitted by the recorder while capturing:
@@ -227,6 +296,12 @@ export interface PillState {
    * ("Normal" / "Vibe Coding" / "Formal") for the transient 'notice' flash
    */
   message?: string
+  /**
+   * 'meeting' only: meeting start (epoch ms) so the pill's elapsed timer
+   * survives re-assertion — after a mid-meeting dictation finishes, main
+   * re-pushes 'meeting' and the timer must resume from the true start, not 0.
+   */
+  startedAt?: number
 }
 
 /** API exposed on window.owenflow by the preload script. */
@@ -343,6 +418,46 @@ export interface OwenFlowApi {
      */
     start: () => Promise<void>
   }
+  meetings: {
+    /**
+     * Start a meeting recording ("meeting:start"). Resolves false when a
+     * meeting is already active (or the store couldn't be created).
+     */
+    start: () => Promise<boolean>
+    /** Stop the active meeting ("meeting:stop"); resolves once meta is finalized. */
+    stop: () => Promise<void>
+    /** Current meeting snapshot ("meeting:state" invoke). */
+    state: () => Promise<MeetingStateInfo>
+    /** Subscribe to meeting state pushes ("meeting:state"). Returns unsubscribe. */
+    onState: (cb: (s: MeetingStateInfo) => void) => () => void
+    /** All recorded meetings, newest first ("meeting:list"). */
+    list: () => Promise<MeetingMeta[]>
+    /** One meeting's meta + full transcript ("meeting:get"). */
+    get: (id: string) => Promise<{ meta: MeetingMeta; entries: MeetingEntry[] }>
+    /** Delete a meeting's folder ("meeting:delete"); active meeting is refused. */
+    remove: (id: string) => Promise<void>
+    /**
+     * The meeting's LLM summary ("meeting:summarize"): generates it if absent,
+     * persists it into meta.json, returns it ('' when generation failed).
+     */
+    summarize: (id: string) => Promise<string>
+  }
+  meetingCapture: {
+    /** Hidden meeting window: main asks capture to start ("meeting:capture:start"). */
+    onStart: (cb: () => void) => () => void
+    /** Main asks capture to stop — flush remainders, then sendStopped ("meeting:capture:stop"). */
+    onStop: (cb: () => void) => () => void
+    /**
+     * Ship one pause-flushed segment WAV with its stream + start time
+     * ("meeting:segment"). Ordered IPC: every segment lands in main BEFORE
+     * the sendStopped() that follows the stop-flush.
+     */
+    sendSegment: (wav: ArrayBuffer, stream: MeetingStream, startedAtMs: number) => void
+    /** All remainders flushed and tracks released ("meeting:capture:stopped"). */
+    sendStopped: () => void
+    /** Report a capture failure (mic/loopback denied etc.) ("meeting:capture:error"). */
+    sendError: (message: string) => void
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -378,5 +493,21 @@ export const IPC = {
   winMinimize: 'win:minimize',
   winMaximize: 'win:maximize',
   winClose: 'win:close',
-  dictationStart: 'dictation:start'
+  dictationStart: 'dictation:start',
+  // Meeting mode. meetingState doubles as the invoke channel (snapshot) and
+  // the push channel (main → windows on every change) — handle() and send()
+  // live in separate registries, so one name serves both.
+  meetingStart: 'meeting:start',
+  meetingStop: 'meeting:stop',
+  meetingState: 'meeting:state',
+  meetingList: 'meeting:list',
+  meetingGet: 'meeting:get',
+  meetingDelete: 'meeting:delete',
+  meetingSummarize: 'meeting:summarize',
+  // Meeting capture bridge (main ↔ hidden meeting window).
+  meetingCaptureStart: 'meeting:capture:start',
+  meetingCaptureStop: 'meeting:capture:stop',
+  meetingCaptureStopped: 'meeting:capture:stopped',
+  meetingSegment: 'meeting:segment',
+  meetingCaptureError: 'meeting:capture:error'
 } as const

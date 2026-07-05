@@ -18,6 +18,7 @@
         --dim: rgba(235, 235, 240, 0.45); /* secondary text (timer) */
         --ok: rgba(140, 225, 165, 0.95); /* soft green check — low-key */
         --warn: #ffb340; /* amber "!" for errors */
+        --rec: #ff453a; /* meeting recording dot — the one allowed red */
       }
       * {
         margin: 0;
@@ -137,6 +138,34 @@
       #pill[data-state='recording'] #time {
         display: block;
       }
+      /* meeting: persistent calm state — small red dot + elapsed timer in the
+         compact shell. No waveform, no width change: this sits on screen for
+         hours, so it must be the quietest thing the pill can show. */
+      #dot {
+        display: none;
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--rec);
+        animation: dot-breathe 2.6s ease-in-out infinite;
+      }
+      #pill[data-state='meeting'] #dot {
+        display: block;
+      }
+      #pill[data-state='meeting'] #time {
+        display: block;
+      }
+      /* slow opacity breathe — alive, not blinking */
+      @keyframes dot-breathe {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
       /* transcribing: three soft white dots pulsing in sequence — the calm
          indeterminate cue that replaces the waveform while we wait */
       #proc {
@@ -232,6 +261,7 @@
           <span></span>
         </div>
         <canvas id="wave"></canvas>
+        <div id="dot"></div>
         <div id="time">0:00</div>
         <div class="icon" id="check">
           <svg viewBox="0 0 16 16" fill="none">

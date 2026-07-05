@@ -12,6 +12,9 @@ import type {
   FlowMode,
   FolderCount,
   HistoryEntry,
+  MeetingEntry,
+  MeetingMeta,
+  MeetingStateInfo,
   OwenFlowSettings,
   SidecarStatusInfo,
   ThemeMode
@@ -66,6 +69,7 @@ type SectionName =
   | 'modes'
   | 'dictionary'
   | 'history'
+  | 'meetings'
   | 'general'
   | 'apps'
   | 'command'
@@ -79,6 +83,7 @@ const pages: SectionName[] = [
   'modes',
   'dictionary',
   'history',
+  'meetings',
   'general',
   'apps',
   'command',
@@ -91,7 +96,7 @@ const pages: SectionName[] = [
 const ADVANCED_SECTIONS: SectionName[] = ['general', 'apps', 'command', 'zeal', 'digest', 'about']
 
 /** Sections with no settings form → no save bar. */
-const NO_SAVE_BAR: SectionName[] = ['home', 'history', 'about']
+const NO_SAVE_BAR: SectionName[] = ['home', 'history', 'meetings', 'about']
 
 // Collapsible ADVANCED group — open/closed persists across sessions.
 const ADVANCED_LS_KEY = 'owenflow.advancedOpen'
@@ -122,7 +127,11 @@ try {
   setAdvancedOpen(false, false)
 }
 
+/** Section currently on screen — gates the live meeting elapsed ticker. */
+let currentSection: SectionName = 'home'
+
 function showSection(name: SectionName): void {
+  currentSection = name
   for (const item of navItems) item.classList.toggle('active', item.dataset.section === name)
   for (const page of pages) $(`page-${page}`).classList.toggle('active', page === name)
   // Navigating into an Advanced section (tray, tab link) reveals the group.
@@ -133,6 +142,12 @@ function showSection(name: SectionName): void {
   $('form-actions').classList.toggle('hidden', NO_SAVE_BAR.includes(name))
   if (name === 'history') void refreshHistory()
   if (name === 'home') void refreshHome()
+  // Meetings always re-enters on the list view (detail is per-visit state).
+  if (name === 'meetings') {
+    closeMeetingDetail(false)
+    void refreshMeetings()
+  }
+  syncMeetingTicker()
 }
 
 for (const item of navItems) {
@@ -945,6 +960,7 @@ function renderTags(entry: HistoryEntry): HTMLElement {
   for (const tag of entry.tags) {
     const chip = document.createElement('span')
     chip.className = 'tag-chip'
+    chip.dataset.tag = tag // lets CSS mark special tags (e.g. 'meeting')
     chip.title = `Filter by #${tag}`
 
     const name = document.createElement('span')
@@ -1265,6 +1281,454 @@ async function refreshHistory(): Promise<void> {
 $('btn-clear').addEventListener('click', async () => {
   await window.owenflow.history.clear()
   await refreshHistory()
+})
+
+// ─── Meetings ───────────────────────────────────────────────────────────────
+// Meeting recordings are a separate store from dictation history: their own
+// nav section, their own cards (MEETING badge, Recorded + Updated dates) and
+// a per-meeting detail view with the conversation transcript.
+
+const meetingsListView = $('meetings-list-view')
+const meetingsList = $('meetings-list')
+const meetingDetail = $('meeting-detail')
+const meetingToggleBtn = $<HTMLButtonElement>('btn-meeting-toggle')
+const homeMeetingPill = $('home-meeting-pill')
+const homeMeetingElapsed = $('home-meeting-elapsed')
+
+let meetingState: MeetingStateInfo = { active: false, startedAt: null }
+/** Meeting id currently open in the detail view (null = list view). */
+let openMeetingId: string | null = null
+let meetingTicker: ReturnType<typeof setInterval> | undefined
+
+/** "Friday, July 5 · 2:04 PM" — friendly card/detail title. */
+function meetingTitle(startedAt: number): string {
+  const d = new Date(startedAt)
+  const day = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `${day} · ${time}`
+}
+
+/** "Jul 5, 02:04 PM" — the full Recorded date+time for the meta line. */
+function meetingDateTime(ts: number): string {
+  return new Date(ts).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+/** "0:42", "12:05", "1:02:03" — duration/elapsed from milliseconds. */
+function formatMeetingDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const mm = h ? String(m).padStart(2, '0') : String(m)
+  return `${h ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
+}
+
+/** HH:mm timestamp for a transcript turn. */
+function turnTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * "just now" / "2h ago" for the Updated marker; null when there is nothing
+ * meaningfully newer than the recording itself (within a minute of start).
+ */
+function meetingUpdatedLabel(meta: MeetingMeta): string | null {
+  if (meta.updatedAt == null) return null
+  if (Math.abs(meta.updatedAt - meta.startedAt) < 60_000) return null
+  const rel = relativeTime(meta.updatedAt)
+  return rel === 'now' ? 'just now' : `${rel} ago`
+}
+
+/** "Recorded <dt> · <duration> · <n> words · Updated <rel>" with bold labels. */
+function meetingMetaLine(meta: MeetingMeta): HTMLElement {
+  const line = document.createElement('div')
+  line.className = 'mc-meta'
+  const addPart = (label: string | null, value: string): void => {
+    if (line.childNodes.length > 0) line.append(' · ')
+    if (label) {
+      const b = document.createElement('b')
+      b.textContent = label
+      line.append(b, ' ')
+    }
+    line.append(value)
+  }
+  addPart('Recorded', meetingDateTime(meta.startedAt))
+  if (meta.durationMs != null) addPart(null, formatMeetingDuration(meta.durationMs))
+  if (meta.words != null) addPart(null, `${meta.words.toLocaleString()} words`)
+  const updated = meetingUpdatedLabel(meta)
+  if (updated) addPart('Updated', updated)
+  return line
+}
+
+function meetingChip(): HTMLElement {
+  const chip = document.createElement('span')
+  chip.className = 'meeting-chip'
+  chip.textContent = 'Meeting'
+  return chip
+}
+
+/** The red header button flips Start meeting ↔ End meeting with the state. */
+function renderMeetingControls(): void {
+  meetingToggleBtn.innerHTML = meetingState.active
+    ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>'
+    : '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>'
+  meetingToggleBtn.append(meetingState.active ? 'End meeting' : 'Start meeting')
+  meetingToggleBtn.title = meetingState.active
+    ? 'Stop recording this meeting'
+    : 'Record mic + system audio as a meeting transcript'
+}
+
+/** Home greeting pill: visible only while a meeting is recording. */
+function renderHomeMeetingPill(): void {
+  homeMeetingPill.classList.toggle('show', meetingState.active)
+  if (meetingState.active && meetingState.startedAt != null) {
+    homeMeetingElapsed.textContent = `Meeting recording — ${formatMeetingDuration(
+      Date.now() - meetingState.startedAt
+    )}`
+  }
+}
+
+function tickMeetingElapsed(): void {
+  if (!meetingState.active || meetingState.startedAt == null) return
+  const label = formatMeetingDuration(Date.now() - meetingState.startedAt)
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('.meeting-elapsed'))) {
+    el.textContent = label
+  }
+  renderHomeMeetingPill()
+}
+
+/**
+ * The 1s elapsed ticker runs ONLY while a meeting is active AND a section
+ * that shows the elapsed time (Meetings list, Home pill) is on a visible
+ * window — no background timers otherwise.
+ */
+function syncMeetingTicker(): void {
+  const want =
+    meetingState.active &&
+    !document.hidden &&
+    (currentSection === 'meetings' || currentSection === 'home')
+  if (want && meetingTicker === undefined) {
+    tickMeetingElapsed()
+    meetingTicker = setInterval(tickMeetingElapsed, 1000)
+  } else if (!want && meetingTicker !== undefined) {
+    clearInterval(meetingTicker)
+    meetingTicker = undefined
+  }
+}
+
+document.addEventListener('visibilitychange', syncMeetingTicker)
+
+/** The pinned "Recording…" card shown above the list while a meeting runs. */
+function renderLiveMeetingCard(): HTMLElement {
+  const card = document.createElement('div')
+  card.className = 'meeting-live'
+
+  const dot = document.createElement('span')
+  dot.className = 'rec-dot'
+
+  const body = document.createElement('div')
+  const title = document.createElement('div')
+  title.className = 'ml-title'
+  title.textContent = 'Recording…'
+  const sub = document.createElement('div')
+  sub.className = 'ml-sub'
+  sub.textContent =
+    meetingState.startedAt != null
+      ? `Started ${new Date(meetingState.startedAt).toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        })} — transcribing as you go`
+      : 'Transcribing as you go'
+  body.append(title, sub)
+
+  const time = document.createElement('span')
+  time.className = 'ml-time meeting-elapsed'
+  time.textContent =
+    meetingState.startedAt != null
+      ? formatMeetingDuration(Date.now() - meetingState.startedAt)
+      : '0:00'
+
+  card.append(dot, body, time)
+  return card
+}
+
+function renderMeetingCard(meta: MeetingMeta): HTMLElement {
+  const card = document.createElement('button')
+  card.type = 'button'
+  card.className = 'meeting-card'
+  card.title = 'Open transcript'
+
+  const top = document.createElement('div')
+  top.className = 'mc-top'
+  const title = document.createElement('div')
+  title.className = 'mc-title'
+  title.textContent = meetingTitle(meta.startedAt)
+  top.append(title, meetingChip())
+
+  card.append(top, meetingMetaLine(meta))
+  card.addEventListener('click', () => void openMeeting(meta.id))
+  return card
+}
+
+/** Reload the list view: live card (when recording) + one card per meeting. */
+async function refreshMeetings(): Promise<void> {
+  meetingState = await window.owenflow.meetings.state()
+  renderMeetingControls()
+  renderHomeMeetingPill()
+  syncMeetingTicker()
+
+  const metas = await window.owenflow.meetings.list()
+  // The running meeting is already listable (meta lands at start) — the live
+  // card represents it, so keep its unfinished meta out of the cards.
+  const finished = meetingState.active
+    ? metas.filter((m) => !(m.endedAt == null && m.startedAt === meetingState.startedAt))
+    : metas
+  meetingsList.replaceChildren()
+  if (meetingState.active) meetingsList.append(renderLiveMeetingCard())
+  if (finished.length === 0) {
+    if (meetingState.active) return
+    const empty = document.createElement('div')
+    empty.className = 'empty'
+    empty.textContent =
+      'No meetings yet. Start one here (or tap the meeting hotkey) to record and transcribe both sides of a call.'
+    meetingsList.append(empty)
+    return
+  }
+  for (const meta of finished) meetingsList.append(renderMeetingCard(meta))
+}
+
+/** Grouped consecutive same-speaker entries → one conversation turn. */
+interface MeetingTurn {
+  speaker: MeetingEntry['speaker']
+  t: number
+  entries: MeetingEntry[]
+}
+
+function groupMeetingTurns(entries: MeetingEntry[]): MeetingTurn[] {
+  const turns: MeetingTurn[] = []
+  for (const entry of entries) {
+    const last = turns[turns.length - 1]
+    if (last && last.speaker === entry.speaker) last.entries.push(entry)
+    else turns.push({ speaker: entry.speaker, t: entry.t, entries: [entry] })
+  }
+  return turns
+}
+
+/** Plain-text transcript for the clipboard: "You: …\nThem: …". */
+function meetingTranscriptText(entries: MeetingEntry[]): string {
+  return groupMeetingTurns(entries)
+    .map((turn) => `${turn.speaker === 'you' ? 'You' : 'Them'}: ${turn.entries.map((e) => e.text).join(' ')}`)
+    .join('\n')
+}
+
+/** Ghost action button with the History copy-button feedback pattern. */
+function meetingActionButton(label: string, run: () => Promise<boolean>): HTMLButtonElement {
+  const btn = document.createElement('button')
+  btn.className = 'ghost'
+  btn.textContent = label
+  btn.addEventListener('click', async () => {
+    let ok = false
+    try {
+      ok = await run()
+    } catch {
+      ok = false
+    }
+    btn.textContent = ok ? 'Copied ✓' : 'Copy failed'
+    setTimeout(() => (btn.textContent = label), 1200)
+  })
+  return btn
+}
+
+function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[]): void {
+  meetingDetail.replaceChildren()
+
+  const back = document.createElement('button')
+  back.className = 'back-link'
+  back.textContent = '← Meetings'
+  back.addEventListener('click', () => closeMeetingDetail())
+
+  const head = document.createElement('div')
+  head.className = 'meeting-detail-head'
+  const title = document.createElement('div')
+  title.className = 'page-title'
+  title.textContent = meetingTitle(meta.startedAt)
+  head.append(title, meetingChip())
+
+  const actions = document.createElement('div')
+  actions.className = 'meeting-actions'
+
+  // Transcript before actions so the copy buttons can close over it.
+  const transcript = document.createElement('div')
+  if (entries.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'empty'
+    empty.textContent = 'No transcript segments were captured for this meeting.'
+    transcript.append(empty)
+  } else {
+    for (const turn of groupMeetingTurns(entries)) {
+      const el = document.createElement('div')
+      el.className = 'turn' + (turn.speaker === 'you' ? ' you' : '')
+
+      const headRow = document.createElement('div')
+      headRow.className = 't-head'
+      const speaker = document.createElement('span')
+      speaker.className = 't-speaker'
+      speaker.textContent = turn.speaker === 'you' ? 'You' : 'Them'
+      const time = document.createElement('span')
+      time.className = 't-time'
+      time.textContent = turnTime(turn.t)
+      headRow.append(speaker, time)
+
+      const text = document.createElement('div')
+      text.className = 't-text'
+      turn.entries.forEach((entry, i) => {
+        if (i > 0) text.append(' ')
+        if (entry.text === '[inaudible]') {
+          const dim = document.createElement('span')
+          dim.className = 'inaudible'
+          dim.textContent = entry.text
+          text.append(dim)
+        } else {
+          text.append(entry.text)
+        }
+      })
+
+      el.append(headRow, text)
+      transcript.append(el)
+    }
+  }
+
+  // Summary panel (distinct card above the transcript) — shown when the
+  // summary exists; Summarize generates + persists it on demand otherwise.
+  const summaryPanel = document.createElement('div')
+  summaryPanel.className = 'meeting-summary'
+  const renderSummary = (text: string): void => {
+    summaryPanel.replaceChildren()
+    const h = document.createElement('h2')
+    h.textContent = 'Summary'
+    const body = document.createElement('div')
+    body.className = 'summary-text'
+    body.textContent = text
+    summaryPanel.append(h, body)
+  }
+  if (meta.summary) {
+    renderSummary(meta.summary)
+    actions.append(meetingActionButton('Copy summary', () => window.owenflow.clipboard.write(meta.summary ?? '')))
+  } else {
+    summaryPanel.style.display = 'none'
+    const sumBtn = document.createElement('button')
+    sumBtn.className = 'ghost'
+    sumBtn.textContent = 'Summarize'
+    sumBtn.title = 'Generate an AI summary of this meeting (persisted)'
+    sumBtn.addEventListener('click', async () => {
+      sumBtn.disabled = true
+      sumBtn.textContent = 'Summarizing…'
+      let summary = ''
+      try {
+        summary = await window.owenflow.meetings.summarize(meta.id)
+      } catch {
+        summary = ''
+      }
+      if (summary) {
+        // Re-open: the backend persisted the summary, so a fresh render shows
+        // the Summary panel + Copy summary in their steady-state form.
+        await openMeeting(meta.id)
+        return
+      }
+      sumBtn.textContent = 'Summary failed'
+      setTimeout(() => {
+        sumBtn.textContent = 'Summarize'
+        sumBtn.disabled = false
+      }, 2000)
+    })
+    actions.append(sumBtn)
+  }
+
+  actions.append(
+    meetingActionButton('Copy transcript', () =>
+      window.owenflow.clipboard.write(meetingTranscriptText(entries))
+    )
+  )
+
+  // Delete: inline two-step confirm (no modal), disarms after 3s.
+  const delBtn = document.createElement('button')
+  delBtn.className = 'danger'
+  delBtn.textContent = 'Delete'
+  let armed = false
+  let disarmTimer: ReturnType<typeof setTimeout> | undefined
+  delBtn.addEventListener('click', async () => {
+    if (!armed) {
+      armed = true
+      delBtn.textContent = 'Confirm delete'
+      delBtn.style.color = 'var(--danger)'
+      disarmTimer = setTimeout(() => {
+        armed = false
+        delBtn.textContent = 'Delete'
+        delBtn.style.color = ''
+      }, 3000)
+      return
+    }
+    clearTimeout(disarmTimer)
+    delBtn.disabled = true
+    await window.owenflow.meetings.remove(meta.id)
+    closeMeetingDetail()
+  })
+  actions.append(delBtn)
+
+  meetingDetail.append(back, head, meetingMetaLine(meta), actions, summaryPanel, transcript)
+}
+
+async function openMeeting(id: string): Promise<void> {
+  const { meta, entries } = await window.owenflow.meetings.get(id)
+  openMeetingId = id
+  renderMeetingDetail(meta, entries)
+  meetingsListView.classList.add('hidden')
+  meetingDetail.classList.remove('hidden')
+}
+
+function closeMeetingDetail(refresh = true): void {
+  openMeetingId = null
+  meetingDetail.classList.add('hidden')
+  meetingsListView.classList.remove('hidden')
+  if (refresh) void refreshMeetings()
+}
+
+meetingToggleBtn.addEventListener('click', async () => {
+  meetingToggleBtn.disabled = true
+  try {
+    if (meetingState.active) await window.owenflow.meetings.stop()
+    else await window.owenflow.meetings.start()
+    meetingState = await window.owenflow.meetings.state()
+  } finally {
+    meetingToggleBtn.disabled = false
+  }
+  renderMeetingControls()
+  renderHomeMeetingPill()
+  syncMeetingTicker()
+  if (currentSection === 'meetings' && !openMeetingId) void refreshMeetings()
+})
+
+// Live pushes (hotkey toggles, pill, tray) keep this window in sync.
+window.owenflow.meetings.onState((s) => {
+  meetingState = s
+  renderMeetingControls()
+  renderHomeMeetingPill()
+  syncMeetingTicker()
+  if (currentSection === 'meetings' && !openMeetingId) void refreshMeetings()
+})
+
+homeMeetingPill.addEventListener('click', () => showSection('meetings'))
+
+void window.owenflow.meetings.state().then((s) => {
+  meetingState = s
+  renderMeetingControls()
+  renderHomeMeetingPill()
+  syncMeetingTicker()
 })
 
 // ─── About ──────────────────────────────────────────────────────────────────

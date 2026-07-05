@@ -10,8 +10,10 @@ import * as history from './history'
 import { clipboardWrite } from './clipboard'
 import { createTray, refreshTrayMenu } from './tray'
 import {
+  createMeetingWindow,
   createPillWindow,
   createRecorderWindow,
+  getMeetingWindow,
   getPillWindow,
   getRecorderWindow,
   getSettingsWindow,
@@ -52,6 +54,24 @@ import {
   stopCommandHotkey
 } from './command-hotkey'
 import { reconfigureModeHotkey, startModeHotkey, stopModeHotkey } from './mode-hotkey'
+import { reconfigureMeetingHotkey, startMeetingHotkey, stopMeetingHotkey } from './meeting-hotkey'
+import {
+  activeMeetingId,
+  endMeetingOnQuit,
+  formatMeetingElapsed,
+  getMeetingState,
+  initMeetingChannel,
+  isMeetingActive,
+  onCaptureError,
+  onCaptureStopped,
+  onMeetingSegment,
+  onMeetingStateChange,
+  startMeeting,
+  stopMeeting,
+  wrapPillState
+} from './meeting-channel'
+import * as meetingStore from './meeting-store'
+import { summarizeMeeting } from './meeting-summary'
 import {
   getSidecarStatus,
   onSidecarStatus,
@@ -75,7 +95,7 @@ import { proposeReplacements } from './learn'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
 import { applyReplacements, buildBiasPrompt } from './dictionary'
-import type { FlowMode, OwenFlowSettings } from '../shared/types'
+import type { FlowMode, MeetingStream, OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
 // ─── Single instance ────────────────────────────────────────────────────────
@@ -96,6 +116,18 @@ app.on('window-all-closed', () => {
 // ─── Global enabled flag (tray checkbox) ────────────────────────────────────
 
 let dictationEnabled = true
+
+// ─── Pill routing ───────────────────────────────────────────────────────────
+
+/**
+ * The pill pusher every DICTATION channel gets: dictation states pass
+ * through untouched (they take priority over the meeting display), but an
+ * 'idle' push while a meeting runs re-asserts the calm 'meeting' state
+ * instead of hiding the pill — so a mid-meeting dictation renders its normal
+ * recording→transcribing→done flow and then hands the pill back to the
+ * meeting. The meeting channel itself gets the RAW setPillState.
+ */
+const pushPillState = wrapPillState(setPillState)
 
 // ─── Recorder bridge ────────────────────────────────────────────────────────
 
@@ -215,7 +247,9 @@ function registerIpc(): void {
   })
   // recorder:done is only emitted in continuous mode (normal mode's final
   // reply is recorder:data).
-  ipcMain.on(IPC.recorderDone, () => { void onDone() })
+  ipcMain.on(IPC.recorderDone, () => {
+    void onDone()
+  })
 
   // recorder:data / recorder:error are consumed via ipcMain.once in recorderStop().
   // A stray data event (e.g. stop after timeout) is dropped harmlessly:
@@ -237,6 +271,50 @@ function registerIpc(): void {
     const win = getSettingsWindow()
     if (win && !win.isDestroyed()) win.close()
   })
+
+  // ── Meeting mode ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.meetingStart, () => startMeeting())
+  ipcMain.handle(IPC.meetingStop, () => stopMeeting())
+  ipcMain.handle(IPC.meetingState, () => getMeetingState())
+  ipcMain.handle(IPC.meetingList, () => meetingStore.listMeetings())
+  ipcMain.handle(IPC.meetingGet, (_event, id: string) => meetingStore.getMeeting(id))
+  ipcMain.handle(IPC.meetingDelete, (_event, id: string) => {
+    // Deleting the meeting that is currently being written would leave the
+    // queue appending into a void — refuse; the UI should end it first.
+    if (id === activeMeetingId()) return
+    meetingStore.removeMeeting(id)
+  })
+
+  // Summary: generate lazily on first request, persist into meta.json, and
+  // return it — repeat calls are a cheap meta read. '' = generation failed
+  // (no provider key, network down); nothing is persisted so a later retry
+  // can still succeed.
+  ipcMain.handle(IPC.meetingSummarize, async (_event, id: string): Promise<string> => {
+    const meta = meetingStore.readMeta(id)
+    if (!meta) return ''
+    if (meta.summary) return meta.summary
+    const summary = await summarizeMeeting(meetingStore.readEntries(id), getSettings())
+    if (summary) {
+      // Re-read before writing: a meta refresh (words) may have landed while
+      // the LLM was thinking — don't clobber it with the stale snapshot.
+      const fresh = meetingStore.readMeta(id) ?? meta
+      meetingStore.writeMeta(id, { ...fresh, summary })
+    }
+    return summary
+  })
+
+  // Segment WAVs + lifecycle events from the hidden meeting window.
+  ipcMain.on(
+    IPC.meetingSegment,
+    (_event, wav: ArrayBuffer, stream: MeetingStream, startedAtMs: number) => {
+      onMeetingSegment(wav, stream, startedAtMs)
+    }
+  )
+  ipcMain.on(IPC.meetingCaptureStopped, () => onCaptureStopped())
+  ipcMain.on(IPC.meetingCaptureError, (_event, message: string) =>
+    onCaptureError(typeof message === 'string' ? message : 'Meeting capture failed')
+  )
 
   // Home "Dictate now": minimize the settings window, then start a dictation.
   // Stopping is owned by the normal hotkey state machine (hotkey.ts): in hold
@@ -266,7 +344,7 @@ function applyLaunchOnStartup(enabled: boolean): void {
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.owen.owenflow')
 
-  // Allow mic capture in the hidden recorder window.
+  // Allow mic capture in the hidden recorder + meeting windows.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     callback(permission === 'media')
   })
@@ -295,23 +373,85 @@ app.whenReady().then(async () => {
 
   initTranscribeQueue({
     transcribe: (wav, s) =>
-      transcribe(wav, buildBiasPrompt(parseDictionary(s.dictionary).promptWords), s.language || undefined),
+      transcribe(
+        wav,
+        buildBiasPrompt(parseDictionary(s.dictionary).promptWords),
+        s.language || undefined
+      ),
     deliver: (text, item) => {
       void (async () => {
         let final = text
         try {
           const cleaned = (await cleanup(text, item.settings)) || text
           final = applyReplacements(cleaned, parseDictionary(item.settings.dictionary).replacements)
-        } catch { /* keep raw */ }
-        history.append({ ts: Date.now(), raw: text, final, durationMs: 0, tags: ['recovered'], mode: item.settings.flowMode })
-        notify('OwenFlow — recovered dictation', final.slice(0, 140), () => clipboard.writeText(final))
+        } catch {
+          /* keep raw */
+        }
+        history.append({
+          ts: Date.now(),
+          raw: text,
+          final,
+          durationMs: 0,
+          tags: ['recovered'],
+          mode: item.settings.flowMode
+        })
+        notify('OwenFlow — recovered dictation', final.slice(0, 140), () =>
+          clipboard.writeText(final)
+        )
       })()
     },
-    onDrop: () => notify('OwenFlow — dictation lost', 'Could not transcribe a queued dictation (sidecar unavailable).', () => {})
+    onDrop: () =>
+      notify(
+        'OwenFlow — dictation lost',
+        'Could not transcribe a queued dictation (sidecar unavailable).',
+        () => {}
+      )
+  })
+
+  // Meeting mode: capture in its own hidden window (created lazily on first
+  // start), transcription serially in main, transcript appended per segment.
+  // Meetings COEXIST with dictation — nothing below blocks the pipeline.
+  initMeetingChannel({
+    setPillState, // raw: the wrap re-asserts against THIS channel's state
+    startCapture: () => {
+      void createMeetingWindow()
+        .then((win) => win.webContents.send(IPC.meetingCaptureStart))
+        .catch((err) => {
+          onCaptureError(
+            err instanceof Error ? `Meeting window failed: ${err.message}` : 'Meeting window failed'
+          )
+        })
+    },
+    stopCapture: () => {
+      const win = getMeetingWindow()
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.meetingCaptureStop)
+      else onCaptureStopped() // no capture window — nothing to flush, don't wait
+    },
+    getSettings,
+    transcribe: (wav, s) =>
+      transcribe(
+        wav,
+        buildBiasPrompt(parseDictionary(s.dictionary).promptWords),
+        s.language || undefined
+      ),
+    isPipelineBusy: () => isDictationActive() || isContinuousActive() || isCommandActive(),
+    createMeeting: meetingStore.createMeeting,
+    appendEntry: meetingStore.appendEntry,
+    readMeta: meetingStore.readMeta,
+    writeMeta: meetingStore.writeMeta
+  })
+
+  // Meeting state changes drive the tray toggle label + every open window's
+  // meeting UI (the "meeting:state" push half of the preload contract).
+  onMeetingStateChange((state) => {
+    refreshTrayMenu()
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.meetingState, state)
+    }
   })
 
   initPipeline({
-    setPillState,
+    setPillState: pushPillState,
     recorderStart,
     recorderStop,
     getSettings,
@@ -330,11 +470,12 @@ app.whenReady().then(async () => {
     inject,
     pressEnter,
     getForegroundApp,
-    enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt)
+    enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt),
+    isMeetingActive
   })
 
   initContinuousChannel({
-    setPillState,
+    setPillState: pushPillState,
     startRecorder: () => recorderStart(true),
     stopRecorder: () => getRecorderWindow()?.webContents.send(IPC.recorderStop),
     getSettings,
@@ -350,7 +491,7 @@ app.whenReady().then(async () => {
   })
 
   initCommandChannel({
-    setPillState,
+    setPillState: pushPillState,
     recorderStart,
     recorderStop,
     getSettings,
@@ -379,6 +520,15 @@ app.whenReady().then(async () => {
     onSetFlowMode: (mode) => {
       setSettings({ flowMode: mode })
     },
+    // Meeting toggle: label + routing live behind the channel's state; the
+    // onMeetingStateChange hook above rebuilds this menu on every flip.
+    isMeetingActive,
+    getMeetingElapsed: () =>
+      formatMeetingElapsed(Date.now() - (getMeetingState().startedAt ?? Date.now())),
+    onToggleMeeting: () => {
+      if (isMeetingActive()) void stopMeeting()
+      else void startMeeting()
+    },
     onOpenSettings: () => void openSettingsWindow('settings'),
     onOpenHistory: () => void openSettingsWindow('history'),
     onShowDigest: () => {
@@ -386,7 +536,11 @@ app.whenReady().then(async () => {
       if (d) {
         notify(d.title, d.body, () => void openSettingsWindow('history'))
       } else {
-        notify('OwenFlow — digest', 'No dictations yet today.', () => void openSettingsWindow('history'))
+        notify(
+          'OwenFlow — digest',
+          'No dictations yet today.',
+          () => void openSettingsWindow('history')
+        )
       }
     },
     onQuit: () => app.quit(),
@@ -489,14 +643,16 @@ app.whenReady().then(async () => {
   }
   let modeNoticeTimer: NodeJS.Timeout | null = null
   function flashModeNotice(mode: FlowMode): void {
-    setPillState({ state: 'notice', message: MODE_NOTICE_LABELS[mode] })
+    // Through the wrap: the notice shows as-is, and its idle hide below
+    // re-asserts the meeting display instead of hiding a running meeting.
+    pushPillState({ state: 'notice', message: MODE_NOTICE_LABELS[mode] })
     if (modeNoticeTimer) clearTimeout(modeNoticeTimer)
     modeNoticeTimer = setTimeout(() => {
       modeNoticeTimer = null
       // A dictation/command started inside the notice window owns the pill
       // now — hiding it here would kill the live recording display.
       if (isDictationActive() || isCommandActive() || isContinuousActive()) return
-      setPillState({ state: 'idle' })
+      pushPillState({ state: 'idle' })
     }, MODE_NOTICE_MS)
   }
 
@@ -513,6 +669,18 @@ app.whenReady().then(async () => {
     // Mid-take switches still persist, but skip the flash (see mode-hotkey.ts).
     isBusy: () => isDictationActive() || isCommandActive() || isContinuousActive(),
     showNotice: flashModeNotice
+  })
+
+  // Fourth hotkey: tap to toggle the meeting recorder (default F10). Start vs
+  // stop is decided here off the channel state — the hotkey module is a pure
+  // key→callback bridge like mode-hotkey.
+  startMeetingHotkey({
+    hotkey: initial.meetingHotkey,
+    isEnabled: () => dictationEnabled,
+    onToggle: () => {
+      if (isMeetingActive()) void stopMeeting()
+      else void startMeeting()
+    }
   })
 
   applyLaunchOnStartup(initial.launchOnStartup)
@@ -539,6 +707,10 @@ app.whenReady().then(async () => {
     if (next.modeHotkey !== prev.modeHotkey) {
       // Live-rebind the mode-cycle key (empty string disables it entirely).
       reconfigureModeHotkey(next.modeHotkey)
+    }
+    if (next.meetingHotkey !== prev.meetingHotkey) {
+      // Live-rebind the meeting toggle key (empty string disables it entirely).
+      reconfigureMeetingHotkey(next.meetingHotkey)
     }
     if (next.flowMode !== prev.flowMode) {
       // Reflect Settings-UI mode changes back into the tray radio items.
@@ -576,6 +748,11 @@ app.on('will-quit', () => {
   stopHotkey() // the native hook keeps the process alive if left running
   stopCommandHotkey()
   stopModeHotkey()
+  stopMeetingHotkey()
+  // Quit mid-meeting: stamp endedAt synchronously so the meeting lists as
+  // ended, not crashed. Segments already on disk are safe (append-per-segment);
+  // whatever was still queued is lost — same contract as quitting mid-dictation.
+  endMeetingOnQuit()
   stopSidecar()
   killInjector()
 })

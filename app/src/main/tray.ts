@@ -7,6 +7,12 @@ export interface TrayCallbacks {
   onToggleEnabled: (enabled: boolean) => void
   getFlowMode: () => FlowMode
   onSetFlowMode: (mode: FlowMode) => void
+  /** Meeting recorder state for the Start/End meeting toggle item. */
+  isMeetingActive: () => boolean
+  /** Elapsed label for the active meeting, e.g. "0:42:13" (meeting-channel formats it). */
+  getMeetingElapsed: () => string
+  /** Toggle the meeting recorder (index.ts routes to start/stop by state). */
+  onToggleMeeting: () => void
   onOpenSettings: () => void
   onOpenHistory: () => void
   onShowDigest: () => void
@@ -136,6 +142,15 @@ export function createTray(callbacks: TrayCallbacks): Tray {
         click: (item) => {
           callbacks.onToggleEnabled(item.checked)
         }
+      },
+      {
+        // Meeting recorder toggle. The elapsed time is a rebuild-time snapshot
+        // (the menu rebuilds on every meeting state change, not per second) —
+        // it orients "how long has this been running", not a live stopwatch.
+        label: callbacks.isMeetingActive()
+          ? `End meeting (${callbacks.getMeetingElapsed()})`
+          : 'Start meeting',
+        click: callbacks.onToggleMeeting
       },
       { type: 'separator' },
       {

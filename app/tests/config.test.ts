@@ -156,6 +156,19 @@ describe('config mode-switch hotkey', () => {
   })
 })
 
+describe('config meeting hotkey', () => {
+  it('defaults meetingHotkey to F10 (empty string = disabled)', () => {
+    expect(DEFAULT_SETTINGS.meetingHotkey).toBe('F10')
+    expect(getSettings().meetingHotkey).toBe('F10')
+  })
+
+  it('declares the meetingHotkey schema as a string with F10 default', () => {
+    const schema = captured.options?.schema as Record<string, { type?: string; default?: string }>
+    expect(schema.meetingHotkey.type).toBe('string')
+    expect(schema.meetingHotkey.default).toBe('F10')
+  })
+})
+
 describe('config continuous mode', () => {
   it('defaults continuousMode to false', () => {
     expect(DEFAULT_SETTINGS.continuousMode).toBe(false)

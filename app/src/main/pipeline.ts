@@ -69,6 +69,11 @@ export interface PipelineDeps {
   getForegroundApp?: () => Promise<string | null>
   /** transcribe-queue.ts — queue a failed dictation for retry. */
   enqueueTranscription?: (wav: ArrayBuffer, settings: OwenFlowSettings, startedAt: number) => void
+  /**
+   * meeting-channel.ts — dictations made while a meeting is recording get a
+   * 'meeting' history tag, so mid-meeting notes stay traceable to the meeting.
+   */
+  isMeetingActive?: () => boolean
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -364,7 +369,11 @@ export async function simulateDictation(): Promise<void> {
 
 function sessionTag(settings: OwenFlowSettings): string[] {
   const label = settings.activeSession?.trim()
-  return label ? [label.toLowerCase().replace(/\s+/g, '-')] : []
+  const tags = label ? [label.toLowerCase().replace(/\s+/g, '-')] : []
+  // Mid-meeting dictations carry a 'meeting' tag so notes taken during a call
+  // stay distinguishable from (and traceable alongside) ordinary dictations.
+  if (deps?.isMeetingActive?.()) tags.push('meeting')
+  return tags
 }
 
 function appendEntry(

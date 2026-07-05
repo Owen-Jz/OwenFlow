@@ -89,6 +89,17 @@
       mode: 'normal'
     },
     {
+      // Dictated DURING a meeting — main auto-tags these 'meeting', and the
+      // History chip for that tag gets the tiny red-dot treatment.
+      ts: now - 40 * MIN,
+      raw: 'action item send tunde the settlement dashboard link after this call',
+      final: 'Action item: send Tunde the settlement dashboard link after this call.',
+      durationMs: 4600,
+      app: 'Slack',
+      tags: ['meeting', 'work'],
+      mode: 'normal'
+    },
+    {
       ts: now - 1 * HOUR,
       raw: 'summarize this thread and draft a reply saying we will ship the invoice flow by friday',
       final: "Summarize this thread and draft a reply saying we'll ship the invoice flow by Friday.",
@@ -145,6 +156,86 @@
       mode: 'normal'
     }
   ]
+
+  // ── Meetings mock ─────────────────────────────────────────────────────────
+  // Open settings.html with ?meeting=active to screenshot the live-recording
+  // variant (pulsing card on Meetings, pill on Home, End-meeting button).
+  var MEETING_ACTIVE = /[?&]meeting=active/.test(location.search)
+
+  // Yesterday, 1 hour, summarized later (updatedAt > recorded); plus a 12-min
+  // meeting today without a summary (updatedAt ≈ ended, so Updated shows).
+  var yesterdayStart = now - DAY - 2 * HOUR
+  var todayStart = now - 3 * HOUR
+  var meetingMetas = [
+    {
+      id: '2026-07-05-101400',
+      startedAt: todayStart,
+      endedAt: todayStart + 12 * MIN,
+      durationMs: 12 * MIN,
+      words: 1618,
+      updatedAt: todayStart + 12 * MIN
+    },
+    {
+      id: '2026-07-04-140000',
+      startedAt: yesterdayStart,
+      endedAt: yesterdayStart + HOUR,
+      durationMs: HOUR,
+      words: 8412,
+      summary:
+        'Weekly product sync with the Nomba team.\n' +
+        '• Locked the per-invoice virtual accounts flow for the July demo; webhook reconciliation maps accountRef to aliasAccountReference.\n' +
+        '• Owen ships the settlement dashboard by Friday; Tunde owns sandbox credentials and the transfer smoke test.\n' +
+        '• Open question: whether expectedAmount should stay unset so partial payments still reconcile.\n' +
+        'Next check-in Thursday 10:30.',
+      updatedAt: now - 5 * HOUR
+    }
+  ]
+
+  var meetingTranscripts = {
+    '2026-07-05-101400': [
+      { t: todayStart + 5 * 1000, speaker: 'them', text: 'Morning Owen, can you hear me okay?' },
+      { t: todayStart + 12 * 1000, speaker: 'you', text: 'Loud and clear. I wanted to run through the invoice webhook quickly before standup.' },
+      { t: todayStart + 40 * 1000, speaker: 'you', text: 'The signature is an HMAC over the nine-field colon string, not the raw body — that was the bug.' },
+      { t: todayStart + 70 * 1000, speaker: 'them', text: 'That explains the 401s we saw on Friday.' },
+      { t: todayStart + 95 * 1000, speaker: 'them', text: '[inaudible]' },
+      { t: todayStart + 110 * 1000, speaker: 'them', text: 'Sorry, my mic cut out — I said the sandbox creds landed in spam, check that folder.' },
+      { t: todayStart + 140 * 1000, speaker: 'you', text: 'Found them. I will rerun the transfer smoke test right after this call and ping you when it is green.' },
+      { t: todayStart + 11 * MIN, speaker: 'them', text: 'Perfect. Let us pick the rest up at standup.' }
+    ],
+    '2026-07-04-140000': [
+      { t: yesterdayStart + 10 * 1000, speaker: 'them', text: 'Alright, weekly sync. Demo day is on the nineteenth so let us lock scope today.' },
+      { t: yesterdayStart + 45 * 1000, speaker: 'you', text: 'Agreed. My proposal is we ship per-invoice virtual accounts only — one account per invoice, auto-reconciled off the webhook.' },
+      { t: yesterdayStart + 90 * 1000, speaker: 'you', text: 'Rent and school fees stay post-hackathon; the scoring had SME per-invoice ahead anyway.' },
+      { t: yesterdayStart + 3 * MIN, speaker: 'them', text: 'Works for me. What is left on the dashboard?' },
+      { t: yesterdayStart + 4 * MIN, speaker: 'you', text: 'Settlement view and the reconciliation table. I can have both by Friday.' },
+      { t: yesterdayStart + 30 * MIN, speaker: 'them', text: '[inaudible]' },
+      { t: yesterdayStart + 31 * MIN, speaker: 'them', text: 'I was asking whether we leave expectedAmount unset so partial payments still reconcile.' },
+      { t: yesterdayStart + 33 * MIN, speaker: 'you', text: 'Yes — leave it unset. If we set it the sender bank rejects mismatches and we lose the partial-payment story.' },
+      { t: yesterdayStart + 58 * MIN, speaker: 'them', text: 'Good session. Next check-in Thursday ten thirty.' }
+    ]
+  }
+
+  var meetingStateInfo = {
+    active: MEETING_ACTIVE,
+    startedAt: MEETING_ACTIVE ? now - 42 * 1000 : null
+  }
+  var meetingStateCbs = []
+  function pushMeetingState() {
+    var snapshot = { active: meetingStateInfo.active, startedAt: meetingStateInfo.startedAt }
+    meetingStateCbs.forEach(function (cb) {
+      cb(snapshot)
+    })
+  }
+  // Mirror the backend: a running meeting is already listable (meta written
+  // at start, no endedAt yet). The renderer folds it into the live card.
+  if (MEETING_ACTIVE) {
+    meetingMetas.unshift({
+      id: '2026-07-05-131800',
+      startedAt: meetingStateInfo.startedAt,
+      words: 96,
+      updatedAt: now - 5 * 1000
+    })
+  }
 
   function resolve(value) {
     return Promise.resolve(value)
@@ -303,6 +394,95 @@
       start: function () {
         return resolve(undefined)
       }
+    },
+    meetings: {
+      start: function () {
+        if (meetingStateInfo.active) return resolve(false)
+        meetingStateInfo = { active: true, startedAt: Date.now() }
+        meetingMetas.unshift({
+          id: 'live-' + meetingStateInfo.startedAt,
+          startedAt: meetingStateInfo.startedAt,
+          words: 0,
+          updatedAt: meetingStateInfo.startedAt
+        })
+        pushMeetingState()
+        return resolve(true)
+      },
+      stop: function () {
+        if (meetingStateInfo.active) {
+          var startedAt = meetingStateInfo.startedAt
+          for (var i = 0; i < meetingMetas.length; i++) {
+            if (meetingMetas[i].startedAt === startedAt && meetingMetas[i].endedAt == null) {
+              meetingMetas[i].endedAt = Date.now()
+              meetingMetas[i].durationMs = meetingMetas[i].endedAt - startedAt
+              meetingMetas[i].words = meetingMetas[i].words || 96
+              meetingMetas[i].updatedAt = meetingMetas[i].endedAt
+            }
+          }
+          meetingStateInfo = { active: false, startedAt: null }
+          pushMeetingState()
+        }
+        return resolve(undefined)
+      },
+      state: function () {
+        return resolve({ active: meetingStateInfo.active, startedAt: meetingStateInfo.startedAt })
+      },
+      onState: function (cb) {
+        meetingStateCbs.push(cb)
+        return function () {
+          meetingStateCbs = meetingStateCbs.filter(function (c) {
+            return c !== cb
+          })
+        }
+      },
+      list: function () {
+        return resolve(meetingMetas.slice())
+      },
+      get: function (id) {
+        var meta = null
+        for (var i = 0; i < meetingMetas.length; i++) {
+          if (meetingMetas[i].id === id) meta = meetingMetas[i]
+        }
+        return resolve({
+          meta: Object.assign({}, meta),
+          entries: (meetingTranscripts[id] || []).slice()
+        })
+      },
+      remove: function (id) {
+        meetingMetas = meetingMetas.filter(function (m) {
+          return m.id !== id
+        })
+        return resolve(undefined)
+      },
+      summarize: function (id) {
+        var meta = null
+        for (var i = 0; i < meetingMetas.length; i++) {
+          if (meetingMetas[i].id === id) meta = meetingMetas[i]
+        }
+        if (!meta) return resolve('')
+        if (!meta.summary) {
+          meta.summary =
+            'Quick pre-standup sync on the invoice webhook.\n' +
+            '• Root cause of the Friday 401s: signature is HMAC over the 9-field colon string, not the raw body.\n' +
+            '• Sandbox credentials were in spam; Owen reruns the transfer smoke test after the call.\n' +
+            'Follow-ups move to standup.'
+          meta.updatedAt = Date.now()
+        }
+        var summary = meta.summary
+        // Small delay so the "Summarizing…" spinner state is screenshotable.
+        return new Promise(function (res) {
+          setTimeout(function () {
+            res(summary)
+          }, 900)
+        })
+      }
+    },
+    meetingCapture: {
+      onStart: subscription(),
+      onStop: subscription(),
+      sendSegment: function () {},
+      sendStopped: function () {},
+      sendError: function () {}
     }
   }
 })()

@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, shell } from 'electron'
+import { BrowserWindow, desktopCapturer, screen, session, shell } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 import appIcon from '../../resources/icon.png?asset'
@@ -8,7 +8,7 @@ import { PILL_HEIGHT, PILL_WIDTH, computePillPosition } from './pill-position'
 
 const preloadPath = join(__dirname, '../preload/index.js')
 
-function rendererUrl(page: 'recorder' | 'pill' | 'settings'): {
+function rendererUrl(page: 'recorder' | 'pill' | 'settings' | 'meeting'): {
   loadInto: (win: BrowserWindow) => Promise<void>
 } {
   return {
@@ -47,6 +47,82 @@ export async function createRecorderWindow(): Promise<BrowserWindow> {
 
 export function getRecorderWindow(): BrowserWindow | null {
   return recorderWindow
+}
+
+// ─── Meeting capture (hidden, created lazily on first meeting start) ────────
+
+let meetingWindow: BrowserWindow | null = null
+/** In-flight creation — two rapid meeting starts must not spawn two windows. */
+let meetingWindowPromise: Promise<BrowserWindow> | null = null
+let loopbackHandlerRegistered = false
+
+/**
+ * System-audio loopback (Windows): the meeting renderer calls
+ * getDisplayMedia(), and this main-side handler answers it with a screen
+ * source plus `audio: 'loopback'` (Electron ≥31 on Windows — we ship 39).
+ * The renderer stops the mandatory video track immediately and keeps only
+ * the audio, i.e. everything playing on the output device: the Meet/Zoom/
+ * Slack call. Registered once, lazily — the dictation recorder never calls
+ * getDisplayMedia, so a session-wide handler is safe.
+ */
+function registerLoopbackHandler(): void {
+  if (loopbackHandlerRegistered) return
+  loopbackHandlerRegistered = true
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (_request, callback) => {
+      desktopCapturer
+        .getSources({ types: ['screen'] })
+        .then((sources) => {
+          if (sources.length === 0) {
+            callback({}) // deny — renderer surfaces the getDisplayMedia rejection
+            return
+          }
+          callback({ video: sources[0], audio: 'loopback' })
+        })
+        .catch(() => callback({}))
+    },
+    // Never show Windows' own picker — this is a silent internal capture.
+    { useSystemPicker: false }
+  )
+}
+
+/**
+ * Hidden meeting-capture window (mic + loopback → segment WAVs). A separate
+ * window from the dictation recorder ON PURPOSE: meeting capture must never
+ * destabilize normal dictation (multiple getUserMedia consumers of one device
+ * are fine in Chromium, and this window's lifecycle/graph stays independent).
+ * Idempotent — returns the live window or the in-flight creation.
+ */
+export function createMeetingWindow(): Promise<BrowserWindow> {
+  if (meetingWindow && !meetingWindow.isDestroyed()) return Promise.resolve(meetingWindow)
+  if (meetingWindowPromise) return meetingWindowPromise
+  meetingWindowPromise = (async (): Promise<BrowserWindow> => {
+    registerLoopbackHandler()
+    const win = new BrowserWindow({
+      show: false,
+      width: 200,
+      height: 120,
+      skipTaskbar: true,
+      webPreferences: {
+        preload: preloadPath,
+        sandbox: false,
+        contextIsolation: true,
+        // keep audio capture running while hidden — a 3h meeting is all "hidden"
+        backgroundThrottling: false
+      }
+    })
+    await rendererUrl('meeting').loadInto(win)
+    win.on('closed', () => (meetingWindow = null))
+    meetingWindow = win
+    return win
+  })()
+  // Clear the latch either way so a failed load can be retried next start.
+  void meetingWindowPromise.finally(() => (meetingWindowPromise = null))
+  return meetingWindowPromise
+}
+
+export function getMeetingWindow(): BrowserWindow | null {
+  return meetingWindow
 }
 
 // ─── Pill overlay ───────────────────────────────────────────────────────────

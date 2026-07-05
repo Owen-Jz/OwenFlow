@@ -1056,6 +1056,248 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
       }
+      /* Dictations made during a meeting: same chip, plus a tiny red dot so
+         they read as meeting-borne at a glance (red stays a tiny accent). */
+      .tag-chip[data-tag='meeting']::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--danger);
+        opacity: 0.75;
+      }
+
+      /* ─── Meetings ───────────────────────────────────────────────────── */
+      #meetings-list-view.hidden,
+      #meeting-detail.hidden {
+        display: none;
+      }
+      .meetings-toolbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .meetings-toolbar .hint {
+        margin-top: 0;
+      }
+      /* Pulsing red recording dot — same slow opacity breathe as the pill. */
+      .rec-dot {
+        flex: 0 0 auto;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--danger);
+        animation: rec-breathe 2.6s ease-in-out infinite;
+      }
+      @keyframes rec-breathe {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      /* The subtle MEETING badge that separates these cards from History. */
+      .meeting-chip {
+        flex: 0 0 auto;
+        font-size: 9px;
+        font-weight: 650;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        background: var(--tag-bg);
+        border: 1px solid var(--tag-border);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+      .meeting-card {
+        display: block;
+        width: 100%;
+        text-align: left;
+        font: inherit;
+        color: var(--text);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        cursor: pointer;
+        transition: border-color 120ms ease;
+      }
+      .meeting-card:hover {
+        border-color: var(--border-strong);
+      }
+      .mc-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .mc-title {
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+      }
+      .mc-meta {
+        margin-top: 5px;
+        font-size: 11px;
+        color: var(--text-dimmer);
+        font-variant-numeric: tabular-nums;
+      }
+      .mc-meta b {
+        color: var(--tag-text);
+        font-weight: 560;
+      }
+      /* Live "Recording…" card pinned above the list while a meeting runs. */
+      .meeting-live {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--panel);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        padding: 12px 16px;
+        margin-bottom: 10px;
+      }
+      .meeting-live .ml-title {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .meeting-live .ml-sub {
+        font-size: 11px;
+        color: var(--text-dimmer);
+      }
+      .meeting-live .ml-time {
+        margin-left: auto;
+        font-size: 12.5px;
+        color: var(--text-dim);
+        font-variant-numeric: tabular-nums;
+      }
+      /* Detail view */
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin-bottom: 12px;
+        font: inherit;
+        font-size: 12px;
+        color: var(--text-dim);
+        cursor: pointer;
+      }
+      .back-link:hover {
+        color: var(--text);
+      }
+      .meeting-detail-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 4px;
+      }
+      .meeting-detail-head .page-title {
+        margin-bottom: 0;
+      }
+      .meeting-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 12px 0 16px;
+      }
+      .meeting-summary {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        margin-bottom: 14px;
+      }
+      .meeting-summary h2 {
+        font-size: 11px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--text-dim);
+        margin-bottom: 8px;
+      }
+      .meeting-summary .summary-text {
+        font-size: 12.5px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      /* Transcript: conversation turns. "Them" turns plain; "You" turns are
+         right-aligned with a 2px accent bar (mirrors the active-nav bar). */
+      .turn {
+        max-width: 85%;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        padding: 8px 12px 9px;
+        margin-bottom: 8px;
+      }
+      .turn.you {
+        margin-left: auto;
+        border-left: 2px solid var(--accent);
+      }
+      .turn .t-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 3px;
+      }
+      .turn .t-speaker {
+        font-size: 9.5px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .turn .t-time {
+        font-size: 10px;
+        color: var(--text-dimmer);
+        font-variant-numeric: tabular-nums;
+      }
+      .turn .t-text {
+        font-size: 12.5px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .turn .t-text .inaudible {
+        color: var(--text-dimmer);
+        font-style: italic;
+      }
+      /* Home: compact live-meeting pill under the date (hidden unless active). */
+      .meet-pill {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: 7px;
+        font: inherit;
+        font-size: 11px;
+        color: var(--text-dim);
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 3px 10px;
+        cursor: pointer;
+        transition: all 120ms ease;
+      }
+      .meet-pill.show {
+        display: inline-flex;
+      }
+      .meet-pill:hover {
+        color: var(--text);
+        border-color: var(--border-strong);
+      }
+      .meet-pill .rec-dot {
+        width: 6px;
+        height: 6px;
+      }
 
       /* ─── Flow-mode cards ────────────────────────────────────────────── */
       .mode-grid {
@@ -1204,6 +1446,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></svg>
             History
           </button>
+          <button class="nav-item" data-section="meetings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20c.5-3.5 2.8-5.5 5.5-5.5s5 2 5.5 5.5" /><path d="M15.5 5.4a3.2 3.2 0 0 1 0 5.2" /><path d="M17.2 14.9c2 .8 3.1 2.5 3.3 5.1" /></svg>
+            Meetings
+          </button>
 
           <button class="nav-group" id="advanced-toggle" aria-expanded="false">
             <svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5 5 6.5l2.5-3" /></svg>
@@ -1234,6 +1480,10 @@
                 <div class="greet">
                   <h2 id="home-greeting">Good evening, Owen</h2>
                   <div class="date" id="home-date"></div>
+                  <button class="meet-pill" id="home-meeting-pill" title="Meeting recording — open Meetings">
+                    <span class="rec-dot"></span>
+                    <span id="home-meeting-elapsed">Meeting recording — 0:00</span>
+                  </button>
                 </div>
                 <button class="cta" id="btn-dictate-now" title="Minimize and start dictating">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>
@@ -1430,6 +1680,23 @@
               </div>
               <div id="folder-rail"></div>
               <div id="history-list"></div>
+            </section>
+
+            <!-- ─── Meetings ─── -->
+            <section class="page" id="page-meetings">
+              <div id="meetings-list-view">
+                <div class="meetings-toolbar">
+                  <div>
+                    <div class="page-title" style="margin-bottom: 3px">Meetings</div>
+                    <span class="hint" style="margin-top: 0"
+                      >Recorded conversations — kept separate from your dictation history</span
+                    >
+                  </div>
+                  <button class="cta" id="btn-meeting-toggle">Start meeting</button>
+                </div>
+                <div id="meetings-list"></div>
+              </div>
+              <div id="meeting-detail" class="hidden"></div>
             </section>
 
             <!-- ─── General (Advanced) ─── -->

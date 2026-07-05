@@ -13,6 +13,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           recorder: resolve(__dirname, 'src/renderer/recorder.html'),
+          meeting: resolve(__dirname, 'src/renderer/meeting.html'),
           pill: resolve(__dirname, 'src/renderer/pill.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html')
         }

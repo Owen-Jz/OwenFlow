@@ -79,7 +79,7 @@ const PROVIDERS: Record<CleanupProvider, ProviderConfig> = {
  * as does the speed benchmark (it measures the flagship path). Groq-only:
  * MiniMax has a single model either way.
  */
-type ModelTier = 'flagship' | 'fast'
+export type ModelTier = 'flagship' | 'fast'
 
 /** Generous ceiling; Groq usually resolves <1s, MiniMax p95 ≈ 6s. */
 const TIMEOUT_MS = 15_000
@@ -434,18 +434,28 @@ export async function runCommand(
 }
 
 /**
- * One-line theme summary of dictation transcripts for the daily digest.
- * Reuses the active provider; returns '' on no key / any error (never throws).
+ * Minimal low-level chat call: one system + one user message against the
+ * resolved provider (with the same missing-key fallback as cleanup), tiered
+ * per ModelTier, deterministic, capped at `maxTokens`. Returns the reply
+ * text, or '' on no key / empty input / non-200 / timeout — NEVER throws.
+ *
+ * Exists so other modules (meeting-summary.ts's map-reduce, and summarize()
+ * below) reuse the provider resolution instead of re-implementing it.
  */
-export async function summarize(text: string, settings: OwenFlowSettings): Promise<string> {
-  // A one-line theme summary is mechanical — fast tier, like normal cleanup.
+export async function chatOnce(
+  settings: OwenFlowSettings,
+  tier: ModelTier,
+  system: string,
+  user: string,
+  maxTokens = MAX_TOKENS
+): Promise<string> {
   const { url, apiKey, model } = resolveProvider(
     settings,
     settings.cleanupProvider ?? 'groq',
     true,
-    'fast'
+    tier
   )
-  if (!apiKey || !text.trim()) return ''
+  if (!apiKey || !user.trim()) return ''
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
@@ -455,11 +465,11 @@ export async function summarize(text: string, settings: OwenFlowSettings): Promi
       body: JSON.stringify({
         model,
         messages: [
-          { role: 'system', content: 'Summarize the recurring themes of these dictation transcripts in one short line. Output only the summary.' },
-          { role: 'user', content: text }
+          { role: 'system', content: system },
+          { role: 'user', content: user }
         ],
         temperature: 0,
-        max_tokens: 200
+        max_tokens: maxTokens
       }),
       signal: controller.signal
     })
@@ -471,6 +481,21 @@ export async function summarize(text: string, settings: OwenFlowSettings): Promi
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * One-line theme summary of dictation transcripts for the daily digest.
+ * Reuses the active provider; returns '' on no key / any error (never throws).
+ * A one-line theme summary is mechanical — fast tier, like normal cleanup.
+ */
+export async function summarize(text: string, settings: OwenFlowSettings): Promise<string> {
+  return chatOnce(
+    settings,
+    'fast',
+    'Summarize the recurring themes of these dictation transcripts in one short line. Output only the summary.',
+    text,
+    200
+  )
 }
 
 /**

@@ -4,6 +4,10 @@ import type {
   FolderCount,
   HistoryEntry,
   LevelFrame,
+  MeetingEntry,
+  MeetingMeta,
+  MeetingStateInfo,
+  MeetingStream,
   OwenFlowApi,
   OwenFlowSettings,
   PillState,
@@ -108,6 +112,31 @@ const api: OwenFlowApi = {
   },
   dictation: {
     start: (): Promise<void> => ipcRenderer.invoke(IPC.dictationStart)
+  },
+  meetings: {
+    start: (): Promise<boolean> => ipcRenderer.invoke(IPC.meetingStart),
+    stop: (): Promise<void> => ipcRenderer.invoke(IPC.meetingStop),
+    state: (): Promise<MeetingStateInfo> => ipcRenderer.invoke(IPC.meetingState),
+    onState: (cb: (s: MeetingStateInfo) => void) =>
+      subscribe<[MeetingStateInfo]>(IPC.meetingState, cb),
+    list: (): Promise<MeetingMeta[]> => ipcRenderer.invoke(IPC.meetingList),
+    get: (id: string): Promise<{ meta: MeetingMeta; entries: MeetingEntry[] }> =>
+      ipcRenderer.invoke(IPC.meetingGet, id),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke(IPC.meetingDelete, id),
+    summarize: (id: string): Promise<string> => ipcRenderer.invoke(IPC.meetingSummarize, id)
+  },
+  meetingCapture: {
+    onStart: (cb: () => void) => subscribe<[]>(IPC.meetingCaptureStart, cb),
+    onStop: (cb: () => void) => subscribe<[]>(IPC.meetingCaptureStop, cb),
+    sendSegment: (wav: ArrayBuffer, stream: MeetingStream, startedAtMs: number): void => {
+      ipcRenderer.send(IPC.meetingSegment, wav, stream, startedAtMs)
+    },
+    sendStopped: (): void => {
+      ipcRenderer.send(IPC.meetingCaptureStopped)
+    },
+    sendError: (message: string): void => {
+      ipcRenderer.send(IPC.meetingCaptureError, message)
+    }
   }
 }
 

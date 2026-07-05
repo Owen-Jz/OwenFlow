@@ -12,6 +12,13 @@
  * error        → small amber "!" + short message, no glitch effects
  * notice       → brief mode-switch flash: plain white mode label, nothing else
  *                (main hides it after ~900ms, same owner as every timer here)
+ * meeting      → persistent calm state while the meeting recorder runs: small
+ *                red breathing dot + elapsed clock, compact width, NO
+ *                waveform (this sits on screen for hours). The clock counts
+ *                from state.startedAt so it survives re-assertion — a
+ *                dictation mid-meeting takes the pill over as usual, and when
+ *                main re-pushes 'meeting' afterwards the elapsed time is
+ *                still the true meeting duration, not a reset.
  *
  * Sound cues (WebAudio, synthesized — no assets) fire on state transitions:
  * soft sine pings — gentle two-note up on start, two-note down on stop,
@@ -23,7 +30,7 @@
 
 import type { LevelFrame, PillState, PillStateName } from '../../shared/types'
 import { LEVEL_BINS } from '../../shared/types'
-import { formatElapsed } from './pill-motion'
+import { formatClock, formatElapsed } from './pill-motion'
 
 // ─── Palette — single source of truth for recoloring ────────────────────────
 // (Mirror of the CSS variables in pill.html. Recolor = edit here + :root.)
@@ -144,6 +151,28 @@ function stopLoop(): void {
   }
 }
 
+// ─── Meeting clock (interval, not rAF — a once-a-second label needs no 60fps) ─
+
+let meetingStartedAt = 0
+let meetingTimer: ReturnType<typeof setInterval> | null = null
+
+function tickMeetingClock(): void {
+  timeEl.textContent = formatClock(Date.now() - meetingStartedAt)
+}
+
+function startMeetingClock(startedAt: number): void {
+  meetingStartedAt = startedAt
+  tickMeetingClock() // immediate — no blank/stale second on entry
+  if (meetingTimer === null) meetingTimer = setInterval(tickMeetingClock, 500)
+}
+
+function stopMeetingClock(): void {
+  if (meetingTimer !== null) {
+    clearInterval(meetingTimer)
+    meetingTimer = null
+  }
+}
+
 // ─── Sound cues (synthesized, lazy AudioContext, can never throw out) ────────
 
 type CueName = 'start' | 'stop' | 'cancel' | 'error' | 'notice'
@@ -218,9 +247,17 @@ function cueFor(prev: PillStateName, next: PillStateName): CueName | null {
   if (next === 'recording' && prev !== 'recording') return 'start'
   if (prev === 'recording' && next === 'transcribing') return 'stop'
   if (prev === 'recording' && next === 'idle') return 'cancel'
+  // dictation cancelled mid-meeting: the idle push re-asserts 'meeting', so
+  // the cancel cue has to fire on that transition too
+  if (prev === 'recording' && next === 'meeting') return 'cancel'
   if (next === 'error' && prev !== 'error') return 'error'
   // mode-switch flash ticks on entry only; notice→idle fades out silently
   if (next === 'notice' && prev !== 'notice') return 'notice'
+  // meeting start/stop reuse the start/stop cues — but ONLY on the idle
+  // edges: done→meeting / transcribing→meeting are re-assertions after a
+  // mid-meeting dictation, not a new meeting, and must stay silent.
+  if (next === 'meeting' && prev === 'idle') return 'start'
+  if (prev === 'meeting' && next === 'idle') return 'stop'
   return null
 }
 
@@ -235,6 +272,7 @@ function render(next: PillState): void {
 
   if (next.state === 'idle') {
     stopLoop()
+    stopMeetingClock()
     pill.classList.remove('visible')
     // keep last data-state during fade-out so the layout doesn't flicker
     return
@@ -250,16 +288,23 @@ function render(next: PillState): void {
         : ''
 
   if (next.state === 'recording') {
+    stopMeetingClock() // the shared #time belongs to the dictation counter now
     levels = new Array(LEVEL_BINS).fill(0)
     bars = new Float32Array(NUM_BARS).fill(IDLE_LEVEL)
     recordStartAt = performance.now()
     lastTimeText = ''
     timeEl.textContent = '0:00'
     startLoop()
+  } else if (next.state === 'meeting') {
+    stopLoop()
+    // startedAt rides on the push (see PillState.startedAt) — a re-assert
+    // after a mid-meeting dictation resumes the true elapsed time.
+    startMeetingClock(next.startedAt ?? Date.now())
   } else {
     // transcribing/done/error are CSS-only (dots / check / bang) — the
     // canvas hides with the state flip, which is the "bars collapse away"
     stopLoop()
+    stopMeetingClock()
   }
 
   // restart entry animation when becoming visible
@@ -280,7 +325,10 @@ let ttsAudio: HTMLAudioElement | null = null
 
 window.owenflow.tts.onSpeak(async (text) => {
   try {
-    if (ttsAudio) { ttsAudio.pause(); ttsAudio = null }
+    if (ttsAudio) {
+      ttsAudio.pause()
+      ttsAudio = null
+    }
     const res = await fetch('http://127.0.0.1:8484/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -290,7 +338,10 @@ window.owenflow.tts.onSpeak(async (text) => {
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     ttsAudio = new Audio(url)
-    ttsAudio.onended = () => { URL.revokeObjectURL(url); ttsAudio = null }
+    ttsAudio.onended = () => {
+      URL.revokeObjectURL(url)
+      ttsAudio = null
+    }
     await ttsAudio.play()
   } catch {
     /* speech is best-effort */
