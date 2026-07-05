@@ -20,6 +20,7 @@ import {
   readEntries,
   readMeta,
   removeMeeting,
+  renameMeeting,
   writeMeta
 } from '../src/main/meeting-store'
 import type { MeetingEntry } from '../src/shared/types'
@@ -119,6 +120,18 @@ describe('meta', () => {
     writeMeta(id, { id: 'spoofed-id-ignored', startedAt: 1000, endedAt: 5000, words: 42 })
     expect(readMeta(id)).toMatchObject({ id, startedAt: 1000, endedAt: 5000, words: 42 })
     expect(typeof readMeta(id)?.updatedAt).toBe('number')
+  })
+
+  it('renameMeeting sets, trims, and clears the custom title', () => {
+    const id = createMeeting(1000)
+    expect(renameMeeting(id, '  Nomba sync  ')).toBe(true)
+    expect(readMeta(id)?.title).toBe('Nomba sync')
+    // blank clears the field entirely (UI falls back to the friendly date)
+    expect(renameMeeting(id, '   ')).toBe(true)
+    expect(readMeta(id)?.title).toBeUndefined()
+    // unknown/invalid ids refuse without touching disk
+    expect(renameMeeting('2020-01-01-000000', 'x')).toBe(false)
+    expect(renameMeeting('../evil', 'x')).toBe(false)
   })
 
   it('readMeta returns null for unknown ids and corrupt files', () => {

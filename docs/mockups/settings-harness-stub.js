@@ -475,6 +475,18 @@
             res(summary)
           }, 900)
         })
+      },
+      rename: function (id, title) {
+        for (var i = 0; i < meetingMetas.length; i++) {
+          if (meetingMetas[i].id === id) {
+            var trimmed = (title || '').trim()
+            if (trimmed) meetingMetas[i].title = trimmed
+            else delete meetingMetas[i].title
+            meetingMetas[i].updatedAt = Date.now()
+            return resolve(true)
+          }
+        }
+        return resolve(false)
       }
     },
     meetingCapture: {

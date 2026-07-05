@@ -285,6 +285,9 @@ function registerIpc(): void {
     if (id === activeMeetingId()) return
     meetingStore.removeMeeting(id)
   })
+  ipcMain.handle(IPC.meetingRename, (_event, id: string, title: string) =>
+    meetingStore.renameMeeting(id, typeof title === 'string' ? title : '')
+  )
 
   // Summary: generate lazily on first request, persist into meta.json, and
   // return it — repeat calls are a cheap meta read. '' = generation failed

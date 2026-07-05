@@ -164,6 +164,22 @@ export function getMeeting(id: string): { meta: MeetingMeta; entries: MeetingEnt
   return { meta, entries: readEntries(id) }
 }
 
+/**
+ * Set/clear the meeting's custom title. A blank title deletes the field so
+ * the UI falls back to the friendly recorded-date title. writeMeta stamps
+ * updatedAt, so a rename correctly counts as an update.
+ */
+export function renameMeeting(id: string, title: string): boolean {
+  const meta = readMeta(id)
+  if (!meta) return false
+  const trimmed = title.trim()
+  const next = { ...meta }
+  if (trimmed) next.title = trimmed
+  else delete next.title
+  writeMeta(id, next)
+  return true
+}
+
 /** Delete a meeting's folder (transcript + meta) entirely. */
 export function removeMeeting(id: string): void {
   if (!isValidMeetingId(id)) return

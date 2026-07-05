@@ -1308,6 +1308,11 @@ function meetingTitle(startedAt: number): string {
   return `${day} · ${time}`
 }
 
+/** Custom title when set (meetings.rename), else the friendly recorded date. */
+function meetingDisplayTitle(meta: MeetingMeta): string {
+  return meta.title?.trim() || meetingTitle(meta.startedAt)
+}
+
 /** "Jul 5, 02:04 PM" — the full Recorded date+time for the meta line. */
 function meetingDateTime(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {
@@ -1467,7 +1472,7 @@ function renderMeetingCard(meta: MeetingMeta): HTMLElement {
   top.className = 'mc-top'
   const title = document.createElement('div')
   title.className = 'mc-title'
-  title.textContent = meetingTitle(meta.startedAt)
+  title.textContent = meetingDisplayTitle(meta)
   top.append(title, meetingChip())
 
   card.append(top, meetingMetaLine(meta))
@@ -1555,8 +1560,39 @@ function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[]): void {
   const head = document.createElement('div')
   head.className = 'meeting-detail-head'
   const title = document.createElement('div')
-  title.className = 'page-title'
-  title.textContent = meetingTitle(meta.startedAt)
+  title.className = 'page-title mtg-title'
+  title.textContent = meetingDisplayTitle(meta)
+  title.title = 'Click to rename'
+
+  // Click-to-rename: title swaps to an input; Enter/blur saves (blank clears
+  // back to the friendly date), Escape cancels. Re-opens the meeting after a
+  // save so meta (incl. the rename-bumped Updated stamp) re-renders fresh.
+  title.addEventListener('click', () => {
+    const input = document.createElement('input')
+    input.className = 'mtg-title-input'
+    input.value = meta.title?.trim() ?? ''
+    input.placeholder = meetingTitle(meta.startedAt)
+    head.replaceChild(input, title)
+    input.focus()
+    input.select()
+    let settled = false
+    const settle = (save: boolean): void => {
+      if (settled) return
+      settled = true
+      if (!save) {
+        head.replaceChild(title, input)
+        return
+      }
+      void window.owenflow.meetings.rename(meta.id, input.value).then(() => openMeeting(meta.id))
+    }
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') settle(true)
+      else if (e.key === 'Escape') settle(false)
+    })
+    // Escape's replaceChild also fires blur — the settled flag makes it a no-op.
+    input.addEventListener('blur', () => settle(true))
+  })
+
   head.append(title, meetingChip())
 
   const actions = document.createElement('div')

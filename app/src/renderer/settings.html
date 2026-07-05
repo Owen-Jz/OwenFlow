@@ -1202,6 +1202,30 @@
       .meeting-detail-head .page-title {
         margin-bottom: 0;
       }
+      /* click-to-rename title: quiet hover invite, input matches the title type */
+      .mtg-title {
+        cursor: text;
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin-left: -6px;
+      }
+      .mtg-title:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .mtg-title-input {
+        font-family: inherit;
+        font-size: 17px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        color: inherit;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin-left: -6px;
+        min-width: 300px;
+        outline: none;
+      }
       .meeting-actions {
         display: flex;
         align-items: center;

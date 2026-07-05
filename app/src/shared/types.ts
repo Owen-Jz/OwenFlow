@@ -256,6 +256,8 @@ export interface MeetingMeta {
   words?: number
   /** LLM meeting summary; generated + persisted on demand (meetings.summarize). */
   summary?: string
+  /** Custom title (meetings.rename); absent = UI shows the friendly recorded date. */
+  title?: string
   /**
    * epoch ms of the last meta write (stamped centrally by writeMeta) — end of
    * meeting, word-count refresh, or a later summary. The Meetings UI shows it
@@ -441,6 +443,12 @@ export interface OwenFlowApi {
      * persists it into meta.json, returns it ('' when generation failed).
      */
     summarize: (id: string) => Promise<string>
+    /**
+     * Set/clear the meeting's custom title ("meeting:rename"). Empty/blank
+     * title reverts the UI to the friendly recorded-date title. Resolves
+     * false for unknown ids.
+     */
+    rename: (id: string, title: string) => Promise<boolean>
   }
   meetingCapture: {
     /** Hidden meeting window: main asks capture to start ("meeting:capture:start"). */
@@ -504,6 +512,7 @@ export const IPC = {
   meetingGet: 'meeting:get',
   meetingDelete: 'meeting:delete',
   meetingSummarize: 'meeting:summarize',
+  meetingRename: 'meeting:rename',
   // Meeting capture bridge (main ↔ hidden meeting window).
   meetingCaptureStart: 'meeting:capture:start',
   meetingCaptureStop: 'meeting:capture:stop',
