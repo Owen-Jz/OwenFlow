@@ -1445,6 +1445,16 @@
                   <input type="text" id="f-hotkey" spellcheck="false" />
                 </div>
                 <div class="row">
+                  <label class="title" for="f-mode-hotkey">
+                    Mode switch hotkey
+                    <span class="hint">Tap to cycle Normal → Vibe → Formal; empty = off</span>
+                  </label>
+                  <input type="text" id="f-mode-hotkey" spellcheck="false" />
+                </div>
+                <div class="row hidden" id="mode-hotkey-warn">
+                  <span class="hint" style="color: var(--danger)">⚠ Mode switch hotkey matches the dictation or command hotkey — pick a different key.</span>
+                </div>
+                <div class="row">
                   <label class="title" for="f-mode">
                     Mode
                     <span class="hint">Hold to talk, or press once to start / again to stop</span>

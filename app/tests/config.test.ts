@@ -143,6 +143,19 @@ describe('config command channel', () => {
   })
 })
 
+describe('config mode-switch hotkey', () => {
+  it('defaults modeHotkey to F9 (empty string = disabled)', () => {
+    expect(DEFAULT_SETTINGS.modeHotkey).toBe('F9')
+    expect(getSettings().modeHotkey).toBe('F9')
+  })
+
+  it('declares the modeHotkey schema as a string with F9 default', () => {
+    const schema = captured.options?.schema as Record<string, { type?: string; default?: string }>
+    expect(schema.modeHotkey.type).toBe('string')
+    expect(schema.modeHotkey.default).toBe('F9')
+  })
+})
+
 describe('config continuous mode', () => {
   it('defaults continuousMode to false', () => {
     expect(DEFAULT_SETTINGS.continuousMode).toBe(false)

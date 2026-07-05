@@ -83,6 +83,11 @@
       #pill[data-state='error'] {
         width: 150px;
       }
+      /* mode-switch notice reuses the error state's compact-with-label width —
+         same layout treatment, but neutral styling (no amber "!", no glitch) */
+      #pill[data-state='notice'] {
+        width: 150px;
+      }
       /* gentle entrance: small rise + fade, barely-there overshoot (Wispr is
          calm — the old cockpit spring bounced too hard) */
       #pill.visible {
@@ -210,7 +215,10 @@
       #pill[data-state='error'] #bang {
         display: block;
       }
-      #pill[data-state='error'] #label {
+      /* notice: label only — plain white text centered in the shell, no icon,
+         no waveform/canvas (those are gated on their own data-states above) */
+      #pill[data-state='error'] #label,
+      #pill[data-state='notice'] #label {
         display: block;
       }
     </style>

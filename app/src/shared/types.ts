@@ -139,6 +139,12 @@ export interface OwenFlowSettings {
   commandEnabled: boolean
   /** uiohook keycode name for the command hotkey. */
   commandHotkey: string
+  /**
+   * uiohook keycode name for the flow-mode cycling hotkey: each tap steps
+   * normal → vibe → formal → normal (translate stays tray/settings-only).
+   * Empty string = disabled.
+   */
+  modeHotkey: string
   /** Long-form draft mode: stream segments on pauses. */
   continuousMode: boolean
   /** ZEAL voice-command endpoint (POST /api/voice). */
@@ -203,7 +209,7 @@ export interface FolderCount {
   count: number
 }
 
-export type PillStateName = 'idle' | 'recording' | 'transcribing' | 'done' | 'error'
+export type PillStateName = 'idle' | 'recording' | 'transcribing' | 'done' | 'error' | 'notice'
 
 /**
  * Compact live audio level frame emitted by the recorder while capturing:
@@ -216,7 +222,10 @@ export const LEVEL_BINS = 16
 
 export interface PillState {
   state: PillStateName
-  /** optional message, used by the error state (and future extensions) */
+  /**
+   * optional message: the error text for 'error', or the flow-mode label
+   * ("Normal" / "Vibe Coding" / "Formal") for the transient 'notice' flash
+   */
   message?: string
 }
 

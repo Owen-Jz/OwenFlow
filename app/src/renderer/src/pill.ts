@@ -10,11 +10,14 @@
  *                canvas is hidden, so the bars visually collapse away)
  * done         → small soft check fades in, then main's auto-hide takes over
  * error        → small amber "!" + short message, no glitch effects
+ * notice       → brief mode-switch flash: plain white mode label, nothing else
+ *                (main hides it after ~900ms, same owner as every timer here)
  *
  * Sound cues (WebAudio, synthesized — no assets) fire on state transitions:
  * soft sine pings — gentle two-note up on start, two-note down on stop,
- * single low tap on cancel, low double-tap on error. Soft attack, smooth
- * exponential release — polished, not loud/techy.
+ * single low tap on cancel, low double-tap on error, one tiny high tick on
+ * the mode-switch notice. Soft attack, smooth exponential release —
+ * polished, not loud/techy.
  * Sound must never break the pill: every audio call is guarded.
  */
 
@@ -143,7 +146,7 @@ function stopLoop(): void {
 
 // ─── Sound cues (synthesized, lazy AudioContext, can never throw out) ────────
 
-type CueName = 'start' | 'stop' | 'cancel' | 'error'
+type CueName = 'start' | 'stop' | 'cancel' | 'error' | 'notice'
 
 let audio: AudioContext | null = null
 
@@ -201,6 +204,10 @@ function playCue(name: CueName): void {
         tone(audio, 260, 230, t0, 100, CUE_GAIN)
         tone(audio, 220, 195, t0 + 0.12, 110, CUE_GAIN * 0.85)
         break
+      case 'notice':
+        // single soft high tick — "mode switched"; quieter than start/stop
+        tone(audio, 880, 880, t0, 45, 0.12)
+        break
     }
   } catch {
     // sound must never break the pill
@@ -212,6 +219,8 @@ function cueFor(prev: PillStateName, next: PillStateName): CueName | null {
   if (prev === 'recording' && next === 'transcribing') return 'stop'
   if (prev === 'recording' && next === 'idle') return 'cancel'
   if (next === 'error' && prev !== 'error') return 'error'
+  // mode-switch flash ticks on entry only; notice→idle fades out silently
+  if (next === 'notice' && prev !== 'notice') return 'notice'
   return null
 }
 
@@ -232,8 +241,13 @@ function render(next: PillState): void {
   }
 
   pill.dataset.state = next.state
-  // errors stay readable; every other state is purely visual
-  label.textContent = next.state === 'error' ? next.message || 'something went wrong' : ''
+  // errors and mode notices carry text; every other state is purely visual
+  label.textContent =
+    next.state === 'error'
+      ? next.message || 'something went wrong'
+      : next.state === 'notice'
+        ? next.message || ''
+        : ''
 
   if (next.state === 'recording') {
     levels = new Array(LEVEL_BINS).fill(0)

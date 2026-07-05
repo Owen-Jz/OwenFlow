@@ -145,17 +145,25 @@ window.owenflow.ui.onShowTab((tab) => showSection(tab === 'history' ? 'history' 
 // ─── Settings form ──────────────────────────────────────────────────────────
 
 const fHotkey = $<HTMLInputElement>('f-hotkey')
+const fModeHotkey = $<HTMLInputElement>('f-mode-hotkey')
 const fCommandEnabled = $<HTMLInputElement>('f-command-enabled')
 const fCommandHotkey = $<HTMLInputElement>('f-command-hotkey')
 const commandHotkeyWarn = $('command-hotkey-warn')
+const modeHotkeyWarn = $('mode-hotkey-warn')
 function checkHotkeyClash(): void {
-  const clash =
-    fCommandHotkey.value.trim().toLowerCase() === fHotkey.value.trim().toLowerCase() &&
-    !!fCommandHotkey.value.trim()
-  commandHotkeyWarn.classList.toggle('hidden', !clash)
+  const dictation = fHotkey.value.trim().toLowerCase()
+  const command = fCommandHotkey.value.trim().toLowerCase()
+  const modeKey = fModeHotkey.value.trim().toLowerCase()
+  commandHotkeyWarn.classList.toggle('hidden', !(command && command === dictation))
+  // Mode hotkey must differ from BOTH other hotkeys (empty = disabled, never clashes).
+  modeHotkeyWarn.classList.toggle(
+    'hidden',
+    !(modeKey && (modeKey === dictation || modeKey === command))
+  )
 }
 fCommandHotkey.addEventListener('input', checkHotkeyClash)
 fHotkey.addEventListener('input', checkHotkeyClash)
+fModeHotkey.addEventListener('input', checkHotkeyClash)
 
 const fMode = $<HTMLSelectElement>('f-mode')
 const fContinuous = $<HTMLInputElement>('f-continuous')
@@ -498,6 +506,7 @@ function fillForm(s: OwenFlowSettings): void {
   renderProfiles()
   fCommandEnabled.checked = s.commandEnabled
   fCommandHotkey.value = s.commandHotkey
+  fModeHotkey.value = s.modeHotkey
   checkHotkeyClash()
   fZealEndpoint.value = s.zealEndpoint
   fZealKey.value = s.zealApiKey
@@ -540,6 +549,8 @@ function readForm(): Partial<OwenFlowSettings> {
     profiles: profilesDraft,
     commandEnabled: fCommandEnabled.checked,
     commandHotkey: fCommandHotkey.value.trim() || 'RightAlt',
+    // No fallback on purpose: an emptied field means "mode hotkey off".
+    modeHotkey: fModeHotkey.value.trim(),
     zealEndpoint: fZealEndpoint.value.trim(),
     zealApiKey: fZealKey.value.trim(),
     zealSpeakReplies: fZealSpeak.checked,

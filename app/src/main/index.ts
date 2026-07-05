@@ -51,6 +51,7 @@ import {
   startCommandHotkey,
   stopCommandHotkey
 } from './command-hotkey'
+import { reconfigureModeHotkey, startModeHotkey, stopModeHotkey } from './mode-hotkey'
 import {
   getSidecarStatus,
   onSidecarStatus,
@@ -74,7 +75,7 @@ import { proposeReplacements } from './learn'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
 import { applyReplacements, buildBiasPrompt } from './dictionary'
-import type { OwenFlowSettings } from '../shared/types'
+import type { FlowMode, OwenFlowSettings } from '../shared/types'
 import { IPC } from '../shared/types'
 
 // ─── Single instance ────────────────────────────────────────────────────────
@@ -476,6 +477,44 @@ app.whenReady().then(async () => {
     }
   })
 
+  // ── Mode-switch flash on the pill ─────────────────────────────────────────
+  // Transient "mode switched" notice. Main owns the hide timer (same pattern
+  // as pipeline.ts failPill — the pill renderer only animates in/out).
+  const MODE_NOTICE_MS = 900
+  const MODE_NOTICE_LABELS: Record<FlowMode, string> = {
+    normal: 'Normal',
+    vibe: 'Vibe Coding',
+    formal: 'Formal',
+    translate: 'Translate' // unreachable via the cycle — kept for totality
+  }
+  let modeNoticeTimer: NodeJS.Timeout | null = null
+  function flashModeNotice(mode: FlowMode): void {
+    setPillState({ state: 'notice', message: MODE_NOTICE_LABELS[mode] })
+    if (modeNoticeTimer) clearTimeout(modeNoticeTimer)
+    modeNoticeTimer = setTimeout(() => {
+      modeNoticeTimer = null
+      // A dictation/command started inside the notice window owns the pill
+      // now — hiding it here would kill the live recording display.
+      if (isDictationActive() || isCommandActive() || isContinuousActive()) return
+      setPillState({ state: 'idle' })
+    }, MODE_NOTICE_MS)
+  }
+
+  // Third hotkey: tap to cycle flow modes (normal → vibe → formal). Persists
+  // through setSettings — the same path as the tray Mode submenu — so the
+  // onSettingsChange listener below rebuilds the tray radios automatically.
+  startModeHotkey({
+    hotkey: initial.modeHotkey,
+    isEnabled: () => dictationEnabled,
+    getSettings,
+    setSettings: (patch) => {
+      setSettings(patch)
+    },
+    // Mid-take switches still persist, but skip the flash (see mode-hotkey.ts).
+    isBusy: () => isDictationActive() || isCommandActive() || isContinuousActive(),
+    showNotice: flashModeNotice
+  })
+
   applyLaunchOnStartup(initial.launchOnStartup)
 
   // First launch (no settings file yet): show Settings so the config is visible.
@@ -496,6 +535,10 @@ app.whenReady().then(async () => {
       next.mode !== prev.mode
     ) {
       reconfigureCommandHotkey(next.commandHotkey, next.mode)
+    }
+    if (next.modeHotkey !== prev.modeHotkey) {
+      // Live-rebind the mode-cycle key (empty string disables it entirely).
+      reconfigureModeHotkey(next.modeHotkey)
     }
     if (next.flowMode !== prev.flowMode) {
       // Reflect Settings-UI mode changes back into the tray radio items.
@@ -532,6 +575,7 @@ app.whenReady().then(async () => {
 app.on('will-quit', () => {
   stopHotkey() // the native hook keeps the process alive if left running
   stopCommandHotkey()
+  stopModeHotkey()
   stopSidecar()
   killInjector()
 })

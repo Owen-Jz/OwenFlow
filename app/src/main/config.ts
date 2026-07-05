@@ -36,6 +36,8 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   digestThemes: false,
   commandEnabled: false,
   commandHotkey: 'RightAlt',
+  // Tap to cycle flow modes (normal → vibe → formal). Empty string disables.
+  modeHotkey: 'F9',
   continuousMode: false,
   zealEndpoint: 'https://173-212-225-7.sslip.io/api/voice',
   zealApiKey: '',
@@ -117,6 +119,7 @@ const store = new Store<OwenFlowSettings>({
     digestThemes: { type: 'boolean', default: false },
     commandEnabled: { type: 'boolean', default: false },
     commandHotkey: { type: 'string', default: 'RightAlt' },
+    modeHotkey: { type: 'string', default: 'F9' },
     continuousMode: { type: 'boolean', default: false },
     zealEndpoint: { type: 'string', default: 'https://173-212-225-7.sslip.io/api/voice' },
     zealApiKey: { type: 'string', default: '' },
