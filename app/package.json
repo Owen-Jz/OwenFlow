@@ -1,6 +1,6 @@
 {
   "name": "owenflow",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "productName": "OwenFlow",
   "description": "Local push-to-talk dictation — hold a key, speak, text appears",
   "main": "./out/main/index.js",
