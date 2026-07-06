@@ -55,7 +55,7 @@ import {
 } from './command-hotkey'
 import { reconfigureModeHotkey, startModeHotkey, stopModeHotkey } from './mode-hotkey'
 import { reconfigureMeetingHotkey, startMeetingHotkey, stopMeetingHotkey } from './meeting-hotkey'
-import { startMeetingDetect, stopMeetingDetect } from './meeting-detect'
+import { notePromptShown, startMeetingDetect, stopMeetingDetect } from './meeting-detect'
 import {
   activeMeetingId,
   endMeetingOnQuit,
@@ -480,6 +480,14 @@ app.whenReady().then(async () => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send(IPC.meetingState, state)
     }
+    // Arm the auto-detect cooldown on ANY meeting start, not just the
+    // notification path.  Without this the 20s poll can re-prompt while
+    // Owen is already in a meeting started via F10 or the tray toggle:
+    // the notification path sets lastPromptAt when showing the note, but
+    // a hotkey-started meeting bypasses that entirely.  Calling
+    // notePromptShown on every active→true transition is harmless for the
+    // notification path (already armed) and closes the gap for all others.
+    if (state.active) notePromptShown(Date.now())
   })
 
   initPipeline({
