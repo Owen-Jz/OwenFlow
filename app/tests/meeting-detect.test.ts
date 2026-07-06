@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { isSelfApp, parseConsentStore } from '../src/main/meeting-detect'
+import { describe, expect, it, vi } from 'vitest'
+
+// meeting-detect.ts imports Notification from electron at the module level
+// after the poller is added — stub it so tests run in plain Node.js.
+vi.mock('electron', () => ({
+  Notification: class MockNotification {
+    on() { return this }
+    show() {}
+  }
+}))
+
+import { isSelfApp, parseConsentStore, shouldPrompt } from '../src/main/meeting-detect'
 
 const REG = [
   'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged\\C:#Users#owen#AppData#Local#Programs#OwenFlow#OwenFlow.exe',
@@ -41,5 +51,23 @@ describe('isSelfApp', () => {
     expect(isSelfApp('C:\\Users\\owen\\AppData\\Local\\Programs\\OwenFlow\\OwenFlow.exe')).toBe(true)
     expect(isSelfApp('C:\\repo\\node_modules\\electron\\dist\\electron.exe')).toBe(true)
     expect(isSelfApp('C:\\Users\\owen\\AppData\\Local\\Zoom\\bin\\Zoom.exe')).toBe(false)
+  })
+})
+
+describe('shouldPrompt', () => {
+  const ZOOM = 'C:\\Users\\owen\\AppData\\Local\\Zoom\\bin\\Zoom.exe'
+  const SELF = 'C:\\Users\\owen\\AppData\\Local\\Programs\\OwenFlow\\OwenFlow.exe'
+
+  it('prompts when a non-self app holds the mic', () => {
+    expect(shouldPrompt([SELF, ZOOM], { lastPromptAt: 0, now: 1_000_000 })).toBe(true)
+  })
+
+  it('never prompts on self-only usage (warm mic must not self-trigger)', () => {
+    expect(shouldPrompt([SELF], { lastPromptAt: 0, now: 1_000_000 })).toBe(false)
+  })
+
+  it('honors the 10-minute cooldown after a prompt', () => {
+    expect(shouldPrompt([ZOOM], { lastPromptAt: 1_000_000, now: 1_000_000 + 5 * 60_000 })).toBe(false)
+    expect(shouldPrompt([ZOOM], { lastPromptAt: 1_000_000, now: 1_000_000 + 11 * 60_000 })).toBe(true)
   })
 })

@@ -40,6 +40,8 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   modeHotkey: 'F9',
   // Tap to toggle the meeting recorder. Empty string disables.
   meetingHotkey: 'F10',
+  // Watch for other apps using the mic and offer to record the call.
+  meetingAutoDetect: true,
   continuousMode: false,
   zealEndpoint: 'https://173-212-225-7.sslip.io/api/voice',
   zealApiKey: '',
@@ -123,6 +125,7 @@ const store = new Store<OwenFlowSettings>({
     commandHotkey: { type: 'string', default: 'RightAlt' },
     modeHotkey: { type: 'string', default: 'F9' },
     meetingHotkey: { type: 'string', default: 'F10' },
+    meetingAutoDetect: { type: 'boolean', default: true },
     continuousMode: { type: 'boolean', default: false },
     zealEndpoint: { type: 'string', default: 'https://173-212-225-7.sslip.io/api/voice' },
     zealApiKey: { type: 'string', default: '' },

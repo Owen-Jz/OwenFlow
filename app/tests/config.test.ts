@@ -175,6 +175,14 @@ describe('config continuous mode', () => {
   })
 })
 
+describe('config meeting auto-detect', () => {
+  it('meetingAutoDetect defaults on and is schema-typed boolean', () => {
+    expect(DEFAULT_SETTINGS.meetingAutoDetect).toBe(true)
+    const schema = captured.options?.schema as Record<string, { type?: string; default?: unknown }>
+    expect(schema.meetingAutoDetect).toEqual({ type: 'boolean', default: true })
+  })
+})
+
 describe('config pill position', () => {
   it('defaults pillPosition to bottom-center (Wispr-compatible default)', () => {
     expect(DEFAULT_SETTINGS.pillPosition).toBe('bottom-center')

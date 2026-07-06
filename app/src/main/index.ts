@@ -55,6 +55,7 @@ import {
 } from './command-hotkey'
 import { reconfigureModeHotkey, startModeHotkey, stopModeHotkey } from './mode-hotkey'
 import { reconfigureMeetingHotkey, startMeetingHotkey, stopMeetingHotkey } from './meeting-hotkey'
+import { startMeetingDetect, stopMeetingDetect } from './meeting-detect'
 import {
   activeMeetingId,
   endMeetingOnQuit,
@@ -444,6 +445,14 @@ app.whenReady().then(async () => {
     writeMeta: meetingStore.writeMeta
   })
 
+  // Auto-detect: poll the ConsentStore every 20s; offer a click-to-record
+  // notification when another app holds the mic (requires meetingAutoDetect).
+  startMeetingDetect({
+    getSettings,
+    isMeetingActive,
+    startMeeting: () => void startMeeting()
+  })
+
   // Meeting state changes drive the tray toggle label + every open window's
   // meeting UI (the "meeting:state" push half of the preload contract).
   onMeetingStateChange((state) => {
@@ -752,6 +761,7 @@ app.on('will-quit', () => {
   stopCommandHotkey()
   stopModeHotkey()
   stopMeetingHotkey()
+  stopMeetingDetect()
   // Quit mid-meeting: stamp endedAt synchronously so the meeting lists as
   // ended, not crashed. Segments already on disk are safe (append-per-segment);
   // whatever was still queued is lost — same contract as quitting mid-dictation.

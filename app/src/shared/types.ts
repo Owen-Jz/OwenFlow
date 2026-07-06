@@ -150,6 +150,11 @@ export interface OwenFlowSettings {
    * meeting recorder on/off. Empty string = disabled.
    */
   meetingHotkey: string
+  /**
+   * Watch for other apps using the microphone and offer to record the call.
+   * Default on.
+   */
+  meetingAutoDetect: boolean
   /** Long-form draft mode: stream segments on pauses. */
   continuousMode: boolean
   /** ZEAL voice-command endpoint (POST /api/voice). */
