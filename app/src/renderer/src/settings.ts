@@ -1292,6 +1292,7 @@ const meetingsListView = $('meetings-list-view')
 const meetingsList = $('meetings-list')
 const meetingDetail = $('meeting-detail')
 const meetingToggleBtn = $<HTMLButtonElement>('btn-meeting-toggle')
+const mtgAutodetect = $<HTMLInputElement>('mtg-autodetect')
 const homeMeetingPill = $('home-meeting-pill')
 const homeMeetingElapsed = $('home-meeting-elapsed')
 
@@ -1482,7 +1483,12 @@ function renderMeetingCard(meta: MeetingMeta): HTMLElement {
 
 /** Reload the list view: live card (when recording) + one card per meeting. */
 async function refreshMeetings(): Promise<void> {
-  meetingState = await window.owenflow.meetings.state()
+  const [stateResult, currentSettings] = await Promise.all([
+    window.owenflow.meetings.state(),
+    window.owenflow.settings.get()
+  ])
+  meetingState = stateResult
+  mtgAutodetect.checked = currentSettings.meetingAutoDetect
   renderMeetingControls()
   renderHomeMeetingPill()
   syncMeetingTicker()
@@ -1747,6 +1753,12 @@ meetingToggleBtn.addEventListener('click', async () => {
   renderHomeMeetingPill()
   syncMeetingTicker()
   if (currentSection === 'meetings' && !openMeetingId) void refreshMeetings()
+})
+
+// Instant-apply: the Meetings page has no save bar, so the toggle behaves
+// like the Home mode chips — one click, persisted immediately.
+mtgAutodetect.addEventListener('change', () => {
+  void window.owenflow.settings.set({ meetingAutoDetect: mtgAutodetect.checked })
 })
 
 // Live pushes (hotkey toggles, pill, tray) keep this window in sync.

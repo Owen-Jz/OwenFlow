@@ -64,7 +64,8 @@
     zealSpeakReplies: false,
     launchOnStartup: true,
     theme: 'dark',
-    pillPosition: 'bottom-center'
+    pillPosition: 'bottom-center',
+    meetingAutoDetect: true
   }
 
   // ~8 realistic entries spread over today + yesterday, newest first.
