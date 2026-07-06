@@ -488,6 +488,20 @@
           }
         }
         return resolve(false)
+      },
+      sendActions: function (id) {
+        return new Promise(function (res) {
+          setTimeout(function () {
+            // Mark actionsSentAt on the mock meta so re-open shows Re-send label.
+            for (var i = 0; i < meetingMetas.length; i++) {
+              if (meetingMetas[i].id === id) {
+                meetingMetas[i].actionsSentAt = Date.now()
+                meetingMetas[i].updatedAt = Date.now()
+              }
+            }
+            res({ items: ['Ship the webhook fix'], sent: true, reply: 'Filed 1 task.' })
+          }, 700)
+        })
       }
     },
     meetingCapture: {

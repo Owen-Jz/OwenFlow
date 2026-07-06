@@ -1555,7 +1555,7 @@ function meetingActionButton(label: string, run: () => Promise<boolean>): HTMLBu
   return btn
 }
 
-function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[]): void {
+function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[], zealConfigured: boolean): void {
   meetingDetail.replaceChildren()
 
   const back = document.createElement('button')
@@ -1691,6 +1691,33 @@ function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[]): void {
     actions.append(sumBtn)
   }
 
+  if (zealConfigured) {
+    const zealBtn = document.createElement('button')
+    zealBtn.className = 'ghost'
+    zealBtn.textContent = meta.actionsSentAt ? 'Re-send action items → ZEAL' : 'Action items → ZEAL'
+    zealBtn.addEventListener('click', async () => {
+      zealBtn.disabled = true
+      zealBtn.textContent = 'Extracting…'
+      try {
+        const res = await window.owenflow.meetings.sendActions(meta.id)
+        if (res.items.length === 0) zealBtn.textContent = 'No action items found'
+        else if (res.sent) {
+          zealBtn.textContent = `Sent ${res.items.length} ✓`
+          // re-open so the actionsSentAt-aware label + Updated stamp re-render
+          setTimeout(() => void openMeeting(meta.id), 1200)
+          return
+        } else zealBtn.textContent = 'ZEAL send failed'
+      } catch {
+        zealBtn.textContent = 'ZEAL send failed'
+      }
+      setTimeout(() => {
+        zealBtn.textContent = meta.actionsSentAt ? 'Re-send action items → ZEAL' : 'Action items → ZEAL'
+        zealBtn.disabled = false
+      }, 1600)
+    })
+    actions.append(zealBtn)
+  }
+
   actions.append(
     meetingActionButton('Copy transcript', () =>
       window.owenflow.clipboard.write(meetingTranscriptText(entries))
@@ -1726,9 +1753,12 @@ function renderMeetingDetail(meta: MeetingMeta, entries: MeetingEntry[]): void {
 }
 
 async function openMeeting(id: string): Promise<void> {
-  const { meta, entries } = await window.owenflow.meetings.get(id)
+  const [{ meta, entries }, s] = await Promise.all([
+    window.owenflow.meetings.get(id),
+    window.owenflow.settings.get()
+  ])
   openMeetingId = id
-  renderMeetingDetail(meta, entries)
+  renderMeetingDetail(meta, entries, Boolean(s.zealApiKey?.trim() && s.zealEndpoint?.trim()))
   meetingsListView.classList.add('hidden')
   meetingDetail.classList.remove('hidden')
 }
