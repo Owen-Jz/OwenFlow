@@ -315,12 +315,17 @@ function resolveProvider(
  * One chat attempt against one provider. Returns the trimmed, delimiter-
  * stripped reply, or null on ANY failure (non-200, timeout, network, empty
  * body) so the caller can decide whether a second provider gets a try.
+ *
+ * `maxTokens` is parameterised so that chatOnce (meeting summaries, action
+ * items) can pass its own cap without being forced to use the cleanup ceiling.
+ * cleanup()'s two call sites rely on the default (MAX_TOKENS) — no change.
  */
 async function attemptChat(
   target: { url: string; apiKey: string; model: string },
   system: string,
   user: string,
-  timeoutMs: number
+  timeoutMs: number,
+  maxTokens = MAX_TOKENS
 ): Promise<string | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -335,7 +340,7 @@ async function attemptChat(
           { role: 'user', content: user }
         ],
         temperature: 0,
-        max_tokens: MAX_TOKENS
+        max_tokens: maxTokens
       }),
       signal: controller.signal
     })
@@ -463,6 +468,14 @@ export async function runCommand(
  *
  * Exists so other modules (meeting-summary.ts's map-reduce, and summarize()
  * below) reuse the provider resolution instead of re-implementing it.
+ *
+ * Now mirrors cleanup()'s provider failover: a primary 429/network-error
+ * triggers one retry on the OTHER provider (FAILOVER_TIMEOUT_MS) rather than
+ * silently returning '' — a shared-key 429 must not silently drop a meeting
+ * summary or an "Action items → ZEAL" push while a keyed second provider sits
+ * idle.  No drift guard: chatOnce doesn't use the <<< >>> transcript wrapper
+ * (stripEchoedDelimiters is a no-op on plain text — confirmed it only strips
+ * leading/trailing <<</>>>, never touches body content).
  */
 export async function chatOnce(
   settings: OwenFlowSettings,
@@ -471,38 +484,26 @@ export async function chatOnce(
   user: string,
   maxTokens = MAX_TOKENS
 ): Promise<string> {
-  const { url, apiKey, model } = resolveProvider(
-    settings,
-    settings.cleanupProvider ?? 'groq',
-    true,
-    tier
-  )
-  if (!apiKey || !user.trim()) return ''
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        temperature: 0,
-        max_tokens: maxTokens
-      }),
-      signal: controller.signal
-    })
-    if (!res.ok) return ''
-    const data = (await res.json()) as ChatResponse
-    return data.choices?.[0]?.message?.content?.trim() || ''
-  } catch {
-    return ''
-  } finally {
-    clearTimeout(timer)
+  // Empty input is always '' — avoid a round-trip on an empty meeting segment.
+  if (!user.trim()) return ''
+
+  const primary = resolveProvider(settings, settings.cleanupProvider ?? 'groq', true, tier)
+  // No key on either provider → '' (unchanged empty-string contract).
+  if (!primary.apiKey) return ''
+
+  let text = await attemptChat(primary, system, user, TIMEOUT_MS, maxTokens)
+  if (text === null) {
+    // One retry on the OTHER provider when it's keyed — same policy as
+    // cleanup()'s failover.  Shorter timeout: user is already waiting.
+    const otherName: CleanupProvider = primary.provider === 'groq' ? 'minimax' : 'groq'
+    const other = resolveProvider(settings, otherName, false, tier)
+    if (other.apiKey) {
+      console.warn(`[chatOnce] ${primary.provider} failed — retrying on ${otherName}`)
+      text = await attemptChat(other, system, user, FAILOVER_TIMEOUT_MS, maxTokens)
+    }
   }
+  // null (both failed / no second key) → '' keeps the contract.
+  return text ?? ''
 }
 
 /**

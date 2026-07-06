@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   benchmarkProvider,
   benchmarkProviders,
+  chatOnce,
   cleanup,
   driftsFromTranscript,
   runCommand,
@@ -631,6 +632,74 @@ describe('cleanup', () => {
       const results = await benchmarkProviders(settings({ groqApiKey: 'gk', minimaxApiKey: 'mk' }))
       expect(results.map((r) => r.provider).sort()).toEqual(['groq', 'minimax'])
       expect(results.every((r) => r.ok)).toBe(true)
+    })
+  })
+
+  // chatOnce is used by meeting summaries (map-reduce) and action-item
+  // extraction — a 429 on the primary provider must not silently drop these
+  // operations while a keyed second provider sits idle.
+  describe('chatOnce failover', () => {
+    const SYS = 'Summarize in one line.'
+    const USER = 'Owen met with the team today and agreed on the July ship date.'
+
+    it('primary 429 → retries the other provider, returns its reply', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(okResponse('July ship date agreed.'))
+      // cleanupProvider=groq primary, minimax as fallback
+      const result = await chatOnce(
+        settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }),
+        'flagship',
+        SYS,
+        USER
+      )
+      expect(result).toBe('July ship date agreed.')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // First call went to Groq, retry landed on MiniMax
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(fetchMock.mock.calls[1][0]).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+      expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer test-key')
+    })
+
+    it('both providers fail → returns empty string (never throws)', async () => {
+      fetchMock.mockResolvedValue(new Response('error', { status: 500 }))
+      const result = await chatOnce(
+        settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }),
+        'flagship',
+        SYS,
+        USER
+      )
+      expect(result).toBe('')
+      // Tried both providers
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('other provider has no key → no retry, returns empty string', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+      const result = await chatOnce(
+        settings({ cleanupProvider: 'groq', groqApiKey: 'gk', minimaxApiKey: '' }),
+        'flagship',
+        SYS,
+        USER
+      )
+      expect(result).toBe('')
+      // Only the primary attempt was made — no second call with no key
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('chatOnce passes its own maxTokens through to the request body', async () => {
+      fetchMock.mockResolvedValue(okResponse('Short summary.'))
+      await chatOnce(
+        settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }),
+        'flagship',
+        SYS,
+        USER,
+        200 // caller's custom cap (e.g. summarize uses 200)
+      )
+      expect(fetchMock).toHaveBeenCalledOnce()
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+      // 200 must arrive at the wire — not the 1500 cleanup ceiling
+      expect(body.max_tokens).toBe(200)
     })
   })
 
