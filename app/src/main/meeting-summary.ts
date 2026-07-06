@@ -109,3 +109,51 @@ export async function summarizeMeeting(
     return '' // belt-and-braces: chatOnce never throws, but the contract is absolute
   }
 }
+
+/**
+ * Action items ride the same never-throw contract as summaries: the model is
+ * asked for STRICT JSON, but small models decorate ("Here you go: ```json…"),
+ * so the parser fishes the first [...] out of the reply and validates hard.
+ */
+const ACTION_SYSTEM = [
+  'Extract the concrete action items from this meeting transcript.',
+  'Output STRICT JSON: an array of short imperative strings (who does what), [] when there are none.',
+  'Only include real commitments and follow-ups actually said — never invent tasks.',
+  'No commentary, no markdown fences — the array only.'
+].join(' ')
+
+export function parseActionItems(reply: string): string[] {
+  const match = reply.match(/\[[\s\S]*\]/)
+  if (!match) return []
+  try {
+    const parsed: unknown = JSON.parse(match[0])
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((x): x is string => typeof x === 'string')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+export async function extractActionItems(
+  entries: MeetingEntry[],
+  settings: OwenFlowSettings,
+  chat: typeof chatOnce = chatOnce
+): Promise<string[]> {
+  if (entries.length === 0) return []
+  try {
+    let transcript = renderBlock(entries)
+    // Long transcripts: take the last 24000 chars — commitments cluster at meeting end
+    if (transcript.length > 24_000) transcript = transcript.slice(-24_000)
+    return parseActionItems(await chat(settings, 'fast', ACTION_SYSTEM, transcript, 600))
+  } catch {
+    return []
+  }
+}
+
+/** The one-shot ZEAL instruction — its /api/voice executor files each bullet as a task. */
+export function buildZealTaskMessage(title: string, items: string[]): string {
+  return `Create these tasks from my meeting "${title}":\n${items.map((i) => `- ${i}`).join('\n')}`
+}

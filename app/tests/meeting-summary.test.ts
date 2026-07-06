@@ -8,7 +8,14 @@ vi.mock('../src/main/cleanup', () => ({
 }))
 
 import { chatOnce } from '../src/main/cleanup'
-import { BLOCK_WORDS, chunkEntries, summarizeMeeting } from '../src/main/meeting-summary'
+import {
+  BLOCK_WORDS,
+  buildZealTaskMessage,
+  chunkEntries,
+  extractActionItems,
+  parseActionItems,
+  summarizeMeeting
+} from '../src/main/meeting-summary'
 
 const chatOnceMock = vi.mocked(chatOnce)
 
@@ -127,5 +134,50 @@ describe('summarizeMeeting', () => {
     chatOnceMock.mockImplementation(async (_s, tier) => (tier === 'fast' ? '- b' : ''))
     const entries = [entryOf(3000), entryOf(3000)]
     await expect(summarizeMeeting(entries, settings)).resolves.toBe('')
+  })
+})
+
+describe('parseActionItems', () => {
+  it('parses a clean JSON array', () => {
+    expect(parseActionItems('["Ship the fix", "Email Dayo"]')).toEqual(['Ship the fix', 'Email Dayo'])
+  })
+  it('recovers the array from fenced/prefixed replies', () => {
+    expect(parseActionItems('Here you go:\n```json\n["Ship the fix"]\n```')).toEqual(['Ship the fix'])
+  })
+  it('returns [] for garbage, non-arrays, and empty arrays', () => {
+    expect(parseActionItems('no items found')).toEqual([])
+    expect(parseActionItems('{"items": 1}')).toEqual([])
+    expect(parseActionItems('[]')).toEqual([])
+  })
+  it('drops non-string members and trims', () => {
+    expect(parseActionItems('["  Ship it  ", 42, ""]')).toEqual(['Ship it'])
+  })
+})
+
+describe('extractActionItems', () => {
+  const entries = [{ t: 1, speaker: 'you' as const, text: 'I will ship the webhook fix by Friday' }]
+  it('sends the transcript to the fast tier and parses the reply', async () => {
+    const chat = vi.fn().mockResolvedValue('["Ship the webhook fix by Friday"]')
+    await expect(extractActionItems(entries, settings, chat)).resolves.toEqual([
+      'Ship the webhook fix by Friday'
+    ])
+    expect(chat).toHaveBeenCalledOnce()
+    const [, tier, system, user] = chat.mock.calls[0]
+    expect(tier).toBe('fast')
+    expect(system).toContain('STRICT JSON')
+    expect(user).toContain('webhook fix')
+  })
+  it('returns [] on chat failure and on empty transcripts', async () => {
+    await expect(extractActionItems([], settings, vi.fn())).resolves.toEqual([])
+    const boom = vi.fn().mockRejectedValue(new Error('down'))
+    await expect(extractActionItems(entries, settings, boom)).resolves.toEqual([])
+  })
+})
+
+describe('buildZealTaskMessage', () => {
+  it('formats title + bulleted items', () => {
+    expect(buildZealTaskMessage('Nomba sync', ['Ship it', 'Email Dayo'])).toBe(
+      'Create these tasks from my meeting "Nomba sync":\n- Ship it\n- Email Dayo'
+    )
   })
 })
