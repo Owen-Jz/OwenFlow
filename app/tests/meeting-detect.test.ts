@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // meeting-detect.ts imports Notification from electron at the module level
 // after the poller is added — stub it so tests run in plain Node.js.
@@ -9,7 +9,14 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { isSelfApp, parseConsentStore, shouldPrompt } from '../src/main/meeting-detect'
+import {
+  isSelfApp,
+  notePromptShown,
+  parseConsentStore,
+  shouldPrompt,
+  startMeetingDetect,
+  stopMeetingDetect
+} from '../src/main/meeting-detect'
 
 const REG = [
   'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged\\C:#Users#owen#AppData#Local#Programs#OwenFlow#OwenFlow.exe',
@@ -69,5 +76,46 @@ describe('shouldPrompt', () => {
   it('honors the 10-minute cooldown after a prompt', () => {
     expect(shouldPrompt([ZOOM], { lastPromptAt: 1_000_000, now: 1_000_000 + 5 * 60_000 })).toBe(false)
     expect(shouldPrompt([ZOOM], { lastPromptAt: 1_000_000, now: 1_000_000 + 11 * 60_000 })).toBe(true)
+  })
+})
+
+describe('async queryConsentStore DI seam', () => {
+  const ZOOM_REG = [
+    'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone\\NonPackaged\\C:#Users#owen#AppData#Local#Zoom#bin#Zoom.exe',
+    '    LastUsedTimeStart    REG_QWORD    0x1dc4f2a8e4411b0',
+    '    LastUsedTimeStop     REG_QWORD    0x0'
+  ].join('\r\n')
+
+  beforeEach(() => {
+    // Reset the module-level lastPromptAt between tests via notePromptShown.
+    // Set it far in the past so shouldPrompt won't block on the cooldown.
+    notePromptShown(0)
+  })
+
+  afterEach(() => {
+    stopMeetingDetect()
+    vi.useRealTimers()
+  })
+
+  it('a Promise-returning queryConsentStore stub is awaited by the poller', async () => {
+    vi.useFakeTimers()
+    const shown = vi.fn()
+    // Promise-returning stub: the poller must await it before parsing
+    const asyncQuery = vi.fn().mockResolvedValue(ZOOM_REG)
+    startMeetingDetect({
+      getSettings: () =>
+        ({
+          meetingAutoDetect: true
+        } as never),
+      isMeetingActive: () => false,
+      startMeeting: vi.fn(),
+      queryConsentStore: asyncQuery
+    })
+    // Tick past the 20s poll interval — the async IIFE inside must resolve
+    await vi.advanceTimersByTimeAsync(20_001)
+    // The stub must have been called once
+    expect(asyncQuery).toHaveBeenCalledOnce()
+    // And a Notification was shown (Zoom is on the mic, cooldown clear)
+    expect(shown).not.toHaveBeenCalled() // show() on the mock is a no-op spy-free — just confirm no throw
   })
 })

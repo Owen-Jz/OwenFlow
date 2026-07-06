@@ -6,9 +6,12 @@
  * running Meet, WhatsApp calls all show up here with zero per-app logic.
  */
 
-import { spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { Notification } from 'electron'
 import type { OwenFlowSettings } from '../shared/types'
+
+const execFileAsync = promisify(execFile)
 
 const KEY_MARKER = '\\ConsentStore\\microphone\\NonPackaged\\'
 
@@ -63,21 +66,38 @@ export function shouldPrompt(
   return liveApps.some((app) => !isSelfApp(app))
 }
 
-function queryConsentStoreReal(): string {
-  const res = spawnSync('reg', ['query', CONSENT_KEY, '/s'], {
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 5_000
-  })
-  return res.stdout ?? ''
+/**
+ * Async runner: shells out to `reg query` without blocking the Electron main
+ * thread.  The 20s poll interval means spawnSync would hold the event loop
+ * for up to 5s every 20s — unacceptable for a tray app.  execFile + promisify
+ * hands the wait to libuv and resolves '' on any error (never rejects) so the
+ * poller's try/catch still covers every other code path.
+ */
+async function queryConsentStoreReal(): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('reg', ['query', CONSENT_KEY, '/s'], {
+      windowsHide: true,
+      timeout: 5_000,
+      encoding: 'utf8'
+    })
+    return stdout ?? ''
+  } catch {
+    // Registry unavailable (non-Windows CI, permission error, etc.) — not fatal.
+    return ''
+  }
 }
 
 export interface MeetingDetectDeps {
   getSettings: () => OwenFlowSettings
   isMeetingActive: () => boolean
   startMeeting: () => void
-  /** DI seam for tests: defaults to the real `reg query` runner. */
-  queryConsentStore?: () => string
+  /**
+   * DI seam for tests: defaults to the real async `reg query` runner.
+   * The union keeps existing sync test stubs working — `await` on a plain
+   * string is a no-op, so tests written before the async conversion need no
+   * changes.
+   */
+  queryConsentStore?: () => string | Promise<string>
 }
 
 let timer: NodeJS.Timeout | null = null
@@ -92,21 +112,28 @@ export function startMeetingDetect(deps: MeetingDetectDeps): void {
   stopMeetingDetect()
   const query = deps.queryConsentStore ?? queryConsentStoreReal
   timer = setInterval(() => {
-    try {
-      if (!deps.getSettings().meetingAutoDetect) return
-      if (deps.isMeetingActive()) return
-      const live = parseConsentStore(query())
-      if (!shouldPrompt(live, { lastPromptAt, now: Date.now() })) return
-      lastPromptAt = Date.now()
-      const note = new Notification({
-        title: 'Call detected',
-        body: 'Another app is using your microphone. Record and transcribe this meeting?'
-      })
-      note.on('click', () => deps.startMeeting())
-      note.show()
-    } catch {
-      // detection is best-effort; a registry hiccup must never surface
-    }
+    // Async IIFE so we can `await query()` without blocking setInterval's
+    // callback slot.  The outer `void` discards the Promise — setInterval
+    // doesn't use the return value, and errors are swallowed inside.
+    void (async () => {
+      try {
+        if (!deps.getSettings().meetingAutoDetect) return
+        if (deps.isMeetingActive()) return
+        // `await` is safe on both sync strings (test stubs) and Promises
+        // (the real runner) — `await 'string'` is a no-op.
+        const live = parseConsentStore(await query())
+        if (!shouldPrompt(live, { lastPromptAt, now: Date.now() })) return
+        lastPromptAt = Date.now()
+        const note = new Notification({
+          title: 'Call detected',
+          body: 'Another app is using your microphone. Record and transcribe this meeting?'
+        })
+        note.on('click', () => deps.startMeeting())
+        note.show()
+      } catch {
+        // detection is best-effort; a registry hiccup must never surface
+      }
+    })()
   }, POLL_MS)
 }
 
