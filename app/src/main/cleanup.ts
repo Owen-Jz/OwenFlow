@@ -84,6 +84,9 @@ export type ModelTier = 'flagship' | 'fast'
 /** Generous ceiling; Groq usually resolves <1s, MiniMax p95 ≈ 6s. */
 const TIMEOUT_MS = 15_000
 
+/** Retry attempt budget — the user already waited out the primary's failure. */
+const FAILOVER_TIMEOUT_MS = 8_000
+
 /** Caps runaway reasoning/output — reasoning tokens count toward this. */
 const MAX_TOKENS = 1_500
 
@@ -289,7 +292,7 @@ function resolveProvider(
   name: CleanupProvider,
   allowFallback = true,
   tier: ModelTier = 'flagship'
-): { url: string; apiKey: string; model: string } {
+): { url: string; apiKey: string; model: string; provider: CleanupProvider } {
   let chosen = name
   if (allowFallback && !keyFor(settings, name)) {
     const other: CleanupProvider = name === 'groq' ? 'minimax' : 'groq'
@@ -305,7 +308,49 @@ function resolveProvider(
         ? settings.groqModelFast || provider.fastModel || provider.defaultModel
         : settings.groqModel || provider.defaultModel
       : provider.defaultModel
-  return { url: provider.url, apiKey: keyFor(settings, chosen), model }
+  return { url: provider.url, apiKey: keyFor(settings, chosen), model, provider: chosen }
+}
+
+/**
+ * One chat attempt against one provider. Returns the trimmed, delimiter-
+ * stripped reply, or null on ANY failure (non-200, timeout, network, empty
+ * body) so the caller can decide whether a second provider gets a try.
+ */
+async function attemptChat(
+  target: { url: string; apiKey: string; model: string },
+  system: string,
+  user: string,
+  timeoutMs: number
+): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(target.url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${target.apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: target.model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        temperature: 0,
+        max_tokens: MAX_TOKENS
+      }),
+      signal: controller.signal
+    })
+    if (!res.ok) {
+      console.warn(`[cleanup] ${target.model} HTTP ${res.status}`)
+      return null
+    }
+    const data = (await res.json()) as ChatResponse
+    return stripEchoedDelimiters(data.choices?.[0]?.message?.content?.trim() ?? '') || null
+  } catch (err) {
+    console.warn(`[cleanup] ${target.model} attempt failed:`, err instanceof Error ? err.message : err)
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function cleanup(raw: string, settings: OwenFlowSettings, extraSystem?: string): Promise<string> {
@@ -324,63 +369,40 @@ export async function cleanup(raw: string, settings: OwenFlowSettings, extraSyst
 
   // Normal cleanup is mechanical → fast tier; the structural rewrite modes
   // (vibe/formal/translate) keep the flagship's reasoning (see ModelTier).
-  const { url, apiKey, model } = resolveProvider(
+  const primary = resolveProvider(
     settings,
     settings.cleanupProvider ?? 'groq',
     true,
     mode === 'normal' ? 'fast' : 'flagship'
   )
-  if (!apiKey) return raw
+  if (!primary.apiKey) return raw
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: [TRANSCRIPT_CONTRACT, systemPromptFor(mode, settings), extraSystem]
-              .filter(Boolean)
-              .join('\n')
-          },
-          { role: 'user', content: wrapTranscript(raw) }
-        ],
-        temperature: 0,
-        max_tokens: MAX_TOKENS
-      }),
-      signal: controller.signal
-    })
-    if (!res.ok) {
-      console.warn(`[cleanup] ${model} HTTP ${res.status} (${mode}) — using raw transcript`)
-      return raw
+  const system = [TRANSCRIPT_CONTRACT, systemPromptFor(mode, settings), extraSystem]
+    .filter(Boolean)
+    .join('\n')
+  const user = wrapTranscript(raw)
+
+  let text = await attemptChat(primary, system, user, TIMEOUT_MS)
+  if (text === null) {
+    // One retry on the OTHER provider when it's keyed — a shared-key 429 or a
+    // provider outage shouldn't silently cost the user their cleanup pass.
+    // Shorter timeout: the user is already waiting behind the failed attempt.
+    const otherName: CleanupProvider = primary.provider === 'groq' ? 'minimax' : 'groq'
+    const other = resolveProvider(settings, otherName, false, mode === 'normal' ? 'fast' : 'flagship')
+    if (other.apiKey) {
+      console.warn(`[cleanup] ${primary.provider} failed — retrying on ${otherName}`)
+      text = await attemptChat(other, system, user, FAILOVER_TIMEOUT_MS)
     }
-    const data = (await res.json()) as ChatResponse
-    const text = stripEchoedDelimiters(data.choices?.[0]?.message?.content?.trim() ?? '')
-    if (!text) return raw
-    // Last line of defense: if a normal-mode reply drifted from what was said
-    // (the model answered/elaborated despite the contract), paste the raw
-    // transcript — wrong-but-verbatim beats fluent-but-invented.
-    if (mode === 'normal' && driftsFromTranscript(raw, text)) {
-      console.warn(`[cleanup] ${model} reply drifted from the transcript (${mode}) — using raw`)
-      return raw
-    }
-    return text
-  } catch (err) {
-    console.warn(
-      `[cleanup] ${mode} pass failed — using raw transcript:`,
-      err instanceof Error ? err.message : err
-    )
-    return raw
-  } finally {
-    clearTimeout(timer)
   }
+  if (!text) return raw
+  // Last line of defense: if a normal-mode reply drifted from what was said
+  // (the model answered/elaborated despite the contract), paste the raw
+  // transcript — wrong-but-verbatim beats fluent-but-invented.
+  if (mode === 'normal' && driftsFromTranscript(raw, text)) {
+    console.warn(`[cleanup] reply drifted from the transcript (${mode}) — using raw`)
+    return raw
+  }
+  return text
 }
 
 /**

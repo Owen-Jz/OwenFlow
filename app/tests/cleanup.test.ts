@@ -338,7 +338,7 @@ describe('cleanup', () => {
     it('vibe/formal/translate are modes, not cleanup — they ignore intensity none', async () => {
       fetchMock.mockResolvedValue(okResponse('x'))
       for (const flowMode of ['vibe', 'formal', 'translate'] as const) {
-        await cleanup(RAW, settings({ flowMode, cleanupIntensity: 'none' }))
+        await cleanup(RAW, settings({ flowMode, cleanupIntensity: 'none', groqApiKey: '' }))
       }
       expect(fetchMock).toHaveBeenCalledTimes(3)
       // And their prompts are the mode prompts, not a normal-intensity variant.
@@ -425,7 +425,7 @@ describe('cleanup', () => {
     vi.useFakeTimers()
     hangingFetch()
     let settled = false
-    const result = cleanup(RAW, settings()).then((text) => {
+    const result = cleanup(RAW, settings({ groqApiKey: '' })).then((text) => {
       settled = true
       return text
     })
@@ -440,7 +440,7 @@ describe('cleanup', () => {
     vi.useFakeTimers()
     hangingFetch()
     let settled = false
-    const result = cleanup(RAW, settings({ flowMode: 'vibe' })).then((text) => {
+    const result = cleanup(RAW, settings({ flowMode: 'vibe', groqApiKey: '' })).then((text) => {
       settled = true
       return text
     })
@@ -705,6 +705,53 @@ describe('cleanup', () => {
         await runCommand('x', 'y', settings({ groqApiKey: '', minimaxApiKey: '', cleanupProvider: 'groq' }))
       ).toBe('')
       expect(fetchMock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('provider failover on errors', () => {
+    it('retries on minimax when groq returns 429, and returns its reply', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response('rate limited', { status: 429 }))
+        .mockResolvedValueOnce(okResponse('So raw text here.'))
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))
+      ).resolves.toBe('So raw text here.')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(fetchMock.mock.calls[1][0]).toBe('https://api.minimax.io/v1/text/chatcompletion_v2')
+      expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe('Bearer test-key')
+    })
+
+    it('retries on groq when minimax network-errors', async () => {
+      fetchMock
+        .mockRejectedValueOnce(new TypeError('fetch failed'))
+        .mockResolvedValueOnce(okResponse('So raw text here.'))
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'minimax' }))
+      ).resolves.toBe('So raw text here.')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[1][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
+    })
+
+    it('returns raw when BOTH providers fail', async () => {
+      fetchMock.mockResolvedValue(new Response('nope', { status: 500 }))
+      await expect(cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))).resolves.toBe(RAW)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('does NOT retry when the other provider has no key', async () => {
+      fetchMock.mockResolvedValue(new Response('nope', { status: 429 }))
+      await expect(
+        cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk', minimaxApiKey: '' }))
+      ).resolves.toBe(RAW)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('the drift guard still applies to the retry reply (normal mode)', async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response('nope', { status: 429 }))
+        .mockResolvedValueOnce(okResponse('Completely invented answer text here instead.'))
+      await expect(cleanup(RAW, settings({ cleanupProvider: 'groq', groqApiKey: 'gk' }))).resolves.toBe(RAW)
     })
   })
 })
