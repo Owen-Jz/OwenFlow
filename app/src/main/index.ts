@@ -72,7 +72,7 @@ import {
   wrapPillState
 } from './meeting-channel'
 import * as meetingStore from './meeting-store'
-import { summarizeMeeting } from './meeting-summary'
+import { summarizeMeeting, extractActionItems, buildZealTaskMessage } from './meeting-summary'
 import {
   getSidecarStatus,
   onSidecarStatus,
@@ -307,6 +307,26 @@ function registerIpc(): void {
     }
     return summary
   })
+
+  ipcMain.handle(
+    IPC.meetingActions,
+    async (_event, id: string): Promise<{ items: string[]; sent: boolean; reply: string }> => {
+      const { meta, entries } = meetingStore.getMeeting(id)
+      if (!meta.startedAt) return { items: [], sent: false, reply: '' }
+      const items = await extractActionItems(entries, getSettings())
+      if (items.length === 0) return { items, sent: false, reply: '' }
+      const title =
+        meta.title?.trim() ||
+        new Date(meta.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      const res = await sendZealCommand(buildZealTaskMessage(title, items), getSettings())
+      if (res.ok) {
+        // Re-read before writing — a words refresh may have landed meanwhile.
+        const fresh = meetingStore.readMeta(id) ?? meta
+        meetingStore.writeMeta(id, { ...fresh, actionsSentAt: Date.now() })
+      }
+      return { items, sent: res.ok, reply: res.reply }
+    }
+  )
 
   // Segment WAVs + lifecycle events from the hidden meeting window.
   ipcMain.on(

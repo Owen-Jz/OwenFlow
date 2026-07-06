@@ -125,7 +125,9 @@ const api: OwenFlowApi = {
     remove: (id: string): Promise<void> => ipcRenderer.invoke(IPC.meetingDelete, id),
     summarize: (id: string): Promise<string> => ipcRenderer.invoke(IPC.meetingSummarize, id),
     rename: (id: string, title: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC.meetingRename, id, title)
+      ipcRenderer.invoke(IPC.meetingRename, id, title),
+    sendActions: (id: string): Promise<{ items: string[]; sent: boolean; reply: string }> =>
+      ipcRenderer.invoke(IPC.meetingActions, id)
   },
   meetingCapture: {
     onStart: (cb: () => void) => subscribe<[]>(IPC.meetingCaptureStart, cb),

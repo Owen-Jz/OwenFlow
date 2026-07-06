@@ -263,6 +263,8 @@ export interface MeetingMeta {
   summary?: string
   /** Custom title (meetings.rename); absent = UI shows the friendly recorded date. */
   title?: string
+  /** epoch ms when action items were last sent to ZEAL. */
+  actionsSentAt?: number
   /**
    * epoch ms of the last meta write (stamped centrally by writeMeta) — end of
    * meeting, word-count refresh, or a later summary. The Meetings UI shows it
@@ -454,6 +456,12 @@ export interface OwenFlowApi {
      * false for unknown ids.
      */
     rename: (id: string, title: string) => Promise<boolean>
+    /**
+     * Extract action items and send them to ZEAL as tasks ("meeting:actions").
+     * items=[] means none were found; sent=false with items present means the
+     * ZEAL call failed (endpoint/key missing or network) — nothing persisted.
+     */
+    sendActions: (id: string) => Promise<{ items: string[]; sent: boolean; reply: string }>
   }
   meetingCapture: {
     /** Hidden meeting window: main asks capture to start ("meeting:capture:start"). */
@@ -518,6 +526,7 @@ export const IPC = {
   meetingDelete: 'meeting:delete',
   meetingSummarize: 'meeting:summarize',
   meetingRename: 'meeting:rename',
+  meetingActions: 'meeting:actions',
   // Meeting capture bridge (main ↔ hidden meeting window).
   meetingCaptureStart: 'meeting:capture:start',
   meetingCaptureStop: 'meeting:capture:stop',
