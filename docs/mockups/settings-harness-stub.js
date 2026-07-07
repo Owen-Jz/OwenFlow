@@ -65,7 +65,8 @@
     launchOnStartup: true,
     theme: 'dark',
     pillPosition: 'bottom-center',
-    meetingAutoDetect: true
+    meetingAutoDetect: true,
+    contextAwareness: false
   }
 
   // ~8 realistic entries spread over today + yesterday, newest first.

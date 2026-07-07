@@ -647,8 +647,10 @@ app.whenReady().then(async () => {
 
   // Pre-warm the PowerShell paste helper so the first dictation isn't slow.
   warmupInjector()
-  // Pre-warm the UIA context-reader helper (contextAwareness opt-in).
-  warmupUia()
+  // Pre-warm the UIA context-reader helper only when the user has opted in;
+  // the ensureHelper inside uia.ts is lazy, so a first dictation spawns it
+  // on demand if the user enables the setting after boot.
+  if (getSettings().contextAwareness) warmupUia()
 
   // Global push-to-talk hotkey, gated on the tray enabled flag.
   const initial = getSettings()

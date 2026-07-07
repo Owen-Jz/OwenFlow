@@ -182,6 +182,7 @@ fModeHotkey.addEventListener('input', checkHotkeyClash)
 
 const fMode = $<HTMLSelectElement>('f-mode')
 const fContinuous = $<HTMLInputElement>('f-continuous')
+const fContextAwareness = $<HTMLInputElement>('f-context-awareness')
 const fModel = $<HTMLSelectElement>('f-model')
 const fLanguage = $<HTMLInputElement>('f-language')
 const fCleanupProvider = $<HTMLSelectElement>('f-cleanup-provider')
@@ -497,6 +498,7 @@ function fillForm(s: OwenFlowSettings): void {
   fHotkey.value = s.hotkey
   fMode.value = s.mode
   fContinuous.checked = s.continuousMode
+  fContextAwareness.checked = s.contextAwareness
   fModel.value = s.model
   fLanguage.value = s.language
   // Settings predating cleanupIntensity map the legacy toggle: on → medium, off → none.
@@ -536,6 +538,7 @@ function readForm(): Partial<OwenFlowSettings> {
     hotkey: fHotkey.value.trim() || 'RightCtrl',
     mode: fMode.value === 'toggle' ? 'toggle' : 'hold',
     continuousMode: fContinuous.checked,
+    contextAwareness: fContextAwareness.checked,
     flowMode: selectedFlowMode,
     model: fModel.value as OwenFlowSettings['model'],
     language: fLanguage.value.trim(),
