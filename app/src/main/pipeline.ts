@@ -74,6 +74,12 @@ export interface PipelineDeps {
    * 'meeting' history tag, so mid-meeting notes stay traceable to the meeting.
    */
   isMeetingActive?: () => boolean
+  /**
+   * uia.ts — read code identifiers from the focused editor at dictation start
+   * for Whisper biasing. Awaited behind a 250ms cap in stopDictation so a slow
+   * UIA read never delays paste.
+   */
+  readEditorSymbols?: () => Promise<string[]>
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -98,6 +104,18 @@ let hideTimer: NodeJS.Timeout | null = null
  * lands BEFORE it — nulling earlier would drop (lose) tail segments.
  */
 let pretrans: Pretranscriber | null = null
+/**
+ * Promise for editor symbols kicked off at dictation start (target editor is
+ * focused then). Awaited behind a 250ms cap in stopDictation so a slow UIA
+ * read never delays paste. Null when the dep is absent or already consumed.
+ */
+let editorSymbolsPromise: Promise<string[]> | null = null
+/**
+ * Resolved symbol context string for the current dictation, set from
+ * editorSymbolsPromise in stopDictation and read by the Pretranscriber
+ * closure at transcription time. Undefined when no identifiers were found.
+ */
+let pendingSymbolContext: string | undefined = undefined
 
 export function initPipeline(pipelineDeps: PipelineDeps): void {
   deps = pipelineDeps
@@ -123,13 +141,23 @@ export async function startDictation(): Promise<void> {
   // Fresh accumulator per dictation. Its transcribe closure re-reads settings
   // per segment (cheap, and mid-dictation settings edits stay coherent).
   const d = deps
-  pretrans = new Pretranscriber(async (wav, context) => {
+  pretrans = new Pretranscriber(async (wav, boundaryContext) => {
     if (!d.transcribe) throw new Error('Transcriber unavailable')
-    return (await d.transcribe(wav, d.getSettings(), context)).text
+    // Merge symbol context (set by stopDictation before acc.finish) with the
+    // per-segment boundary context. Both may be undefined for short dictations.
+    const ctx =
+      pendingSymbolContext || boundaryContext
+        ? [pendingSymbolContext, boundaryContext].filter(Boolean).join(' ') || undefined
+        : undefined
+    return (await d.transcribe(wav, d.getSettings(), ctx)).text
   })
   if (hideTimer) clearTimeout(hideTimer)
   deps.setPillState({ state: 'recording' })
   deps.recorderStart()
+  // Editor symbols are read NOW (target editor is focused at start); the read
+  // is awaited behind a cap at stop so a slow UIA read never delays paste.
+  editorSymbolsPromise = deps.readEditorSymbols ? deps.readEditorSymbols().catch(() => []) : null
+  pendingSymbolContext = undefined
 }
 
 /**
@@ -156,6 +184,8 @@ export function cancelDictation(): boolean {
   // issued and anything in flight resolves into a discarded instance.
   pretrans?.cancel()
   pretrans = null
+  editorSymbolsPromise = null
+  pendingSymbolContext = undefined
   if (dictating) {
     dictating = false
     // Stop the recorder so the mic releases; discard whatever it captured.
@@ -202,6 +232,14 @@ export async function stopDictation(): Promise<void> {
   // precede recorder:data), so the accumulator can be taken over safely.
   const pt = pretrans
   pretrans = null
+
+  // Await editor symbols behind a 250ms cap — a slow UIA read must never push
+  // out the paste. The resolved context is read by the Pretranscriber closure
+  // at transcription time (see startDictation).
+  const symbols = await withCap(editorSymbolsPromise, EDITOR_SYMBOL_CAP_MS, [])
+  editorSymbolsPromise = null
+  pendingSymbolContext = symbols.length ? `Code identifiers: ${symbols.join(', ')}.` : undefined
+  if (gen !== generation) return // cancelled while awaiting symbols
 
   const settings = deps.getSettings()
 
@@ -411,4 +449,16 @@ function scheduleHide(ms: number): void {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Maximum wait for editor symbol reads before continuing with an empty list. */
+const EDITOR_SYMBOL_CAP_MS = 250
+
+/**
+ * Race `p` against a `ms`-ms timeout that resolves to `fallback`.
+ * Passing `null` skips the race entirely (dep absent → no read).
+ */
+function withCap<T>(p: Promise<T> | null, ms: number, fallback: T): Promise<T> {
+  if (!p) return Promise.resolve(fallback)
+  return Promise.race([p, new Promise<T>((r) => setTimeout(() => r(fallback), ms))])
 }

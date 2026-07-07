@@ -89,7 +89,7 @@ import {
   pressEnter,
   warmupInjector
 } from './injector'
-import { killUia, warmupUia } from './uia'
+import { killUia, readEditorSymbols, warmupUia } from './uia'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
@@ -512,7 +512,17 @@ app.whenReady().then(async () => {
     pressEnter,
     getForegroundApp,
     enqueueTranscription: (wav, s, startedAt) => enqueue(wav, s, startedAt),
-    isMeetingActive
+    isMeetingActive,
+    readEditorSymbols: async () => {
+      if (!getSettings().contextAwareness) return []
+      const app = (await getForegroundApp()) ?? ''
+      // Only editors carry code identifiers worth biasing toward.
+      if (
+        !/^(Code|Cursor|Windsurf|devenv|idea|pycharm|webstorm|sublime_text)$/i.test(app)
+      )
+        return []
+      return readEditorSymbols()
+    }
   })
 
   initContinuousChannel({

@@ -292,6 +292,41 @@ describe('pipeline', () => {
     expect(entry.app).toBe('Code')
   })
 
+  it('reads editor symbols at start and feeds them to transcribe at stop', async () => {
+    const symbols = vi.fn().mockResolvedValue(['userId', 'fetchUser'])
+    const transcribe = vi.fn().mockResolvedValue({ text: 'hello', durationMs: 1 })
+    const deps = { ...makeDeps(baseSettings({ cleanupEnabled: false }), []), readEditorSymbols: symbols, transcribe }
+    initPipeline(deps)
+    await startDictation()
+    expect(symbols).toHaveBeenCalledOnce() // fired at start, not stop
+    await stopDictation()
+    const ctx = transcribe.mock.calls[0][2] as string
+    expect(ctx).toContain('userId')
+    expect(ctx).toContain('fetchUser')
+  })
+
+  it('does not block stop when the symbol read hangs past the cap', async () => {
+    vi.useFakeTimers()
+    const symbols = vi.fn().mockReturnValue(new Promise<string[]>(() => {})) // never resolves
+    const transcribe = vi.fn().mockResolvedValue({ text: 'hi', durationMs: 1 })
+    const deps = { ...makeDeps(baseSettings({ cleanupEnabled: false }), []), readEditorSymbols: symbols, transcribe }
+    initPipeline(deps)
+    await startDictation()
+    const stopped = stopDictation()
+    await vi.advanceTimersByTimeAsync(300) // past the 250ms cap
+    await stopped
+    expect(transcribe).toHaveBeenCalledOnce() // proceeded without symbols
+  })
+
+  it('skips the symbol read entirely when the dep is absent', async () => {
+    const transcribe = vi.fn().mockResolvedValue({ text: 'hi', durationMs: 1 })
+    const deps = { ...makeDeps(baseSettings({ cleanupEnabled: false }), []), transcribe }
+    initPipeline(deps)
+    await startDictation()
+    await stopDictation()
+    expect(transcribe).toHaveBeenCalledOnce()
+  })
+
   it('session pick beats an app profile mode', async () => {
     const deps = makeDeps(baseSettings({
       appProfilesEnabled: true,
