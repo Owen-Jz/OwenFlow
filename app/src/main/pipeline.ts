@@ -88,6 +88,13 @@ export interface PipelineDeps {
    * empty values on any error.
    */
   readFocusContext?: () => Promise<{ text: string; site: string | null }>
+  /**
+   * scratchpad.ts — route dictated text into the scratchpad when it is open
+   * and capturing. Returns true if the text was consumed (inject + pressEnter
+   * are skipped); false if the pad is closed or capture is off. Called inside
+   * a try-catch so a throwing implementation is treated as not-consumed.
+   */
+  routeText?: (text: string) => boolean
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -292,19 +299,24 @@ export async function stopDictation(): Promise<void> {
   //     (skip cleanup AND dictionary AND app-profile detection; canned text must not be rewritten).
   const snippetText = matchSnippet(raw, parseSnippets(settings.snippets))
   if (snippetText !== null) {
-    try {
-      if (!deps.inject) throw new Error('Injector unavailable')
-      await deps.inject(snippetText)
-    } catch (err) {
+    const snippetConsumed = safeRouteText(deps, snippetText)
+    if (!snippetConsumed) {
+      try {
+        if (!deps.inject) throw new Error('Injector unavailable')
+        await deps.inject(snippetText)
+      } catch (err) {
+        if (gen !== generation) return
+        processing = false
+        appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+        failPill(err instanceof Error ? err.message : 'Paste failed')
+        return
+      }
       if (gen !== generation) return
-      processing = false
-      appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
-      failPill(err instanceof Error ? err.message : 'Paste failed')
-      return
     }
-    if (gen !== generation) return
     processing = false
-    appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
+    const snippetTags = sessionTag(settings)
+    if (snippetConsumed) snippetTags.push('scratchpad')
+    appendEntry(raw, snippetText, startedAt, settings.flowMode, snippetTags)
     deps.setPillState({ state: 'done' })
     scheduleHide(1200)
     return
@@ -355,38 +367,47 @@ export async function stopDictation(): Promise<void> {
   //     ("… Press enter.") and dictionary/profile edits come first.
   const { text: final, pressEnter } = detectPressEnter(transformed)
 
+  // Route to scratchpad when it is open and capturing. Only attempted when
+  // there is actual text (empty final = "press enter only" utterance — nothing
+  // meaningful to append). Both inject and pressEnter are skipped when consumed.
+  const routeConsumed = final ? safeRouteText(deps, final) : false
+
   // 5. Inject into the focused app. An utterance that was ONLY the command
   //    ("press enter") leaves nothing to paste — skip the inject and go
-  //    straight to the keystroke.
-  try {
-    if (!deps.inject) throw new Error('Injector unavailable')
-    if (final) await deps.inject(final)
-  } catch (err) {
-    if (gen !== generation) return
-    processing = false
-    // Text is left on the clipboard by the injector — still record history.
-    // NOTE: pressEnter is deliberately NOT fired here — pressing Enter after
-    // a failed paste would submit whatever half-typed text the app holds.
-    appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
-    failPill(err instanceof Error ? err.message : 'Paste failed')
-    return
-  }
-  if (gen !== generation) return
-
-  // 5b. Enter keystroke, only after the paste landed (never before, never on
-  //     inject failure). A missed Enter must not fail the dictation — the
-  //     text is already pasted — so any error is swallowed.
-  if (pressEnter && deps.pressEnter) {
+  //    straight to the keystroke. Both are skipped when scratchpad consumed.
+  if (!routeConsumed) {
     try {
-      await deps.pressEnter()
+      if (!deps.inject) throw new Error('Injector unavailable')
+      if (final) await deps.inject(final)
     } catch (err) {
-      console.warn('[pipeline] press-enter failed:', err instanceof Error ? err.message : err)
+      if (gen !== generation) return
+      processing = false
+      // Text is left on the clipboard by the injector — still record history.
+      // NOTE: pressEnter is deliberately NOT fired here — pressing Enter after
+      // a failed paste would submit whatever half-typed text the app holds.
+      appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
+      failPill(err instanceof Error ? err.message : 'Paste failed')
+      return
     }
     if (gen !== generation) return
+
+    // 5b. Enter keystroke, only after the paste landed (never before, never on
+    //     inject failure). A missed Enter must not fail the dictation — the
+    //     text is already pasted — so any error is swallowed.
+    if (pressEnter && deps.pressEnter) {
+      try {
+        await deps.pressEnter()
+      } catch (err) {
+        console.warn('[pipeline] press-enter failed:', err instanceof Error ? err.message : err)
+      }
+      if (gen !== generation) return
+    }
   }
 
   processing = false
-  appendEntry(raw, final, startedAt, effective.flowMode, sessionTag(settings), app ?? undefined)
+  const entryTags = sessionTag(settings)
+  if (routeConsumed) entryTags.push('scratchpad')
+  appendEntry(raw, final, startedAt, effective.flowMode, entryTags, app ?? undefined)
   deps.setPillState({ state: 'done' })
   scheduleHide(1200)
 }
@@ -446,6 +467,19 @@ function appendEntry(
   }
   if (app !== undefined) entry.app = app
   deps?.appendHistory(entry)
+}
+
+/**
+ * Call `deps.routeText` inside a try-catch so a throwing router is treated as
+ * not-consumed (returns false). Returns false when the dep is absent.
+ */
+function safeRouteText(deps: PipelineDeps, text: string): boolean {
+  if (!deps.routeText) return false
+  try {
+    return deps.routeText(text)
+  } catch {
+    return false
+  }
 }
 
 function failPill(message: string, hideAfterMs = 3000): void {

@@ -97,7 +97,7 @@ import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
-import { initScratchpad, registerScratchpadIpc } from './scratchpad'
+import { initScratchpad, registerScratchpadIpc, routeToScratchpad } from './scratchpad'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
 import { applyReplacements, buildBiasPrompt } from './dictionary'
@@ -581,7 +581,8 @@ app.whenReady().then(async () => {
     readFocusContext: async () => {
       if (!getSettings().contextAwareness) return { text: '', site: null }
       return readFocusContext()
-    }
+    },
+    routeText: routeToScratchpad
   })
 
   initContinuousChannel({

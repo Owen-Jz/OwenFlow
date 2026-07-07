@@ -384,6 +384,41 @@ describe('pipeline', () => {
     await stopDictation()
     expect(cleanup.mock.calls[0][2]).toBeUndefined() // empty context → no extra system
   })
+
+  it('routes final text to routeText and skips inject when consumed', async () => {
+    const routeText = vi.fn(() => true)
+    const inject = vi.fn(async () => {})
+    const appendHistory = vi.fn()
+    initPipeline(makePipelineDeps({ routeText, inject, appendHistory }))
+    await startDictation()
+    await stopDictation()
+    expect(routeText).toHaveBeenCalledOnce()
+    expect(routeText).toHaveBeenCalledWith('hello') // transcribe mock returns 'hello'
+    expect(inject).not.toHaveBeenCalled()
+    const entry = appendHistory.mock.calls.at(-1)[0]
+    expect(entry.tags).toContain('scratchpad')
+  })
+
+  it('falls through to inject when routeText returns false', async () => {
+    const routeText = vi.fn(() => false)
+    const inject = vi.fn(async () => {})
+    const appendHistory = vi.fn()
+    initPipeline(makePipelineDeps({ routeText, inject, appendHistory }))
+    await startDictation()
+    await stopDictation()
+    expect(inject).toHaveBeenCalledOnce()
+    const entry = appendHistory.mock.calls.at(-1)[0]
+    expect(entry.tags ?? []).not.toContain('scratchpad')
+  })
+
+  it('treats a throwing routeText as not consumed', async () => {
+    const routeText = vi.fn((): boolean => { throw new Error('boom') })
+    const inject = vi.fn(async () => {})
+    initPipeline(makePipelineDeps({ routeText, inject }))
+    await startDictation()
+    await stopDictation()
+    expect(inject).toHaveBeenCalledOnce()
+  })
 })
 
 describe('streaming pre-transcription (normal one-shot path)', () => {
