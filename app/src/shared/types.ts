@@ -155,6 +155,13 @@ export interface OwenFlowSettings {
    * Default on.
    */
   meetingAutoDetect: boolean
+  /**
+   * Read the focused app's text (and browser URL) via UI Automation to improve
+   * name spelling and code-identifier recognition. Windows-only; best-effort.
+   * Sends a short focused-field snippet to the cleanup LLM, so it ships OFF by
+   * default (opt-in).
+   */
+  contextAwareness: boolean
   /** Long-form draft mode: stream segments on pauses. */
   continuousMode: boolean
   /** ZEAL voice-command endpoint (POST /api/voice). */

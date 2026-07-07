@@ -201,6 +201,14 @@ describe('config pill position', () => {
   })
 })
 
+describe('config context awareness', () => {
+  it('contextAwareness defaults OFF and is schema-typed boolean', () => {
+    expect(DEFAULT_SETTINGS.contextAwareness).toBe(false)
+    const schema = captured.options?.schema as Record<string, { type?: string; default?: unknown }>
+    expect(schema.contextAwareness).toEqual({ type: 'boolean', default: false })
+  })
+})
+
 describe('config ZEAL voice client', () => {
   it('defaults zealEndpoint to the VPS /api/voice URL, zealApiKey empty, zealSpeakReplies true', () => {
     expect(DEFAULT_SETTINGS.zealEndpoint).toContain('/api/voice')

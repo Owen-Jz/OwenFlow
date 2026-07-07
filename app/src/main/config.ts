@@ -42,6 +42,9 @@ export const DEFAULT_SETTINGS: OwenFlowSettings = {
   meetingHotkey: 'F10',
   // Watch for other apps using the mic and offer to record the call.
   meetingAutoDetect: true,
+  // UI Automation context reader: opt-in (off by default) — ships a short
+  // field snippet to the cleanup LLM for better name/identifier spelling.
+  contextAwareness: false,
   continuousMode: false,
   zealEndpoint: 'https://173-212-225-7.sslip.io/api/voice',
   zealApiKey: '',
@@ -126,6 +129,7 @@ const store = new Store<OwenFlowSettings>({
     modeHotkey: { type: 'string', default: 'F9' },
     meetingHotkey: { type: 'string', default: 'F10' },
     meetingAutoDetect: { type: 'boolean', default: true },
+    contextAwareness: { type: 'boolean', default: false },
     continuousMode: { type: 'boolean', default: false },
     zealEndpoint: { type: 'string', default: 'https://173-212-225-7.sslip.io/api/voice' },
     zealApiKey: { type: 'string', default: '' },

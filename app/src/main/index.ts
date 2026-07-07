@@ -89,6 +89,7 @@ import {
   pressEnter,
   warmupInjector
 } from './injector'
+import { killUia, warmupUia } from './uia'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
@@ -632,6 +633,8 @@ app.whenReady().then(async () => {
 
   // Pre-warm the PowerShell paste helper so the first dictation isn't slow.
   warmupInjector()
+  // Pre-warm the UIA context-reader helper (contextAwareness opt-in).
+  warmupUia()
 
   // Global push-to-talk hotkey, gated on the tray enabled flag.
   const initial = getSettings()
@@ -796,4 +799,5 @@ app.on('will-quit', () => {
   endMeetingOnQuit()
   stopSidecar()
   killInjector()
+  killUia()
 })
