@@ -20,7 +20,10 @@ interface QueueDeps {
 }
 
 const RETRY_INTERVAL_MS = 3000
-const MAX_ATTEMPTS = 40
+// 10 minutes of retries: a GPU-squeezed model load can take several minutes,
+// and dropping the user's audio is the worst possible outcome. Each retry is
+// one cheap local HTTP attempt.
+const MAX_ATTEMPTS = 200
 
 let deps: QueueDeps | null = null
 let items: QueueItem[] = []

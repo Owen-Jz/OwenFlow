@@ -189,9 +189,15 @@ async function spawnAndWait(): Promise<void> {
   })
 
   // Health-poll patiently: model load takes a few seconds (longer on first
-  // download). Up to 60s.
-  const deadline = Date.now() + HEALTH_TIMEOUT_MS
-  while (Date.now() < deadline) {
+  // download, and MINUTES when the GPU is squeezed by other apps). Past the
+  // 60s mark we note the slow load but keep waiting — the process is alive,
+  // and declaring a terminal error here would strand a sidecar that finishes
+  // loading moments later (every transcribe() would refuse forever while the
+  // port answers /health perfectly). Only a process exit ends the wait; the
+  // 'exit' handler owns crash restarts.
+  const slowAfter = Date.now() + HEALTH_TIMEOUT_MS
+  let slowNoted = false
+  for (;;) {
     if (stopping) return
     if (child !== proc || proc.exitCode !== null) {
       throw new Error('Sidecar process exited during startup')
@@ -205,10 +211,13 @@ async function spawnAndWait(): Promise<void> {
       console.log('[sidecar] ready:', health)
       return
     }
+    if (!slowNoted && Date.now() > slowAfter) {
+      slowNoted = true
+      setStatus('starting', `still loading whisper "${currentModel}" (slow — GPU busy?)`)
+      console.warn('[sidecar] model not loaded after 60s — waiting patiently')
+    }
     await delay(HEALTH_INTERVAL_MS)
   }
-  setStatus('error', 'health check timed out (60s)')
-  throw new Error('Sidecar did not become healthy within 60s')
 }
 
 /** Kill the sidecar (and its python child — `py` is a launcher, so kill the tree). */
@@ -253,7 +262,18 @@ export async function transcribe(
   language?: string
 ): Promise<SidecarTranscribeResult> {
   if (status !== 'ready') {
-    throw new Error(`Transcriber not ready (${status}${statusDetail ? `: ${statusDetail}` : ''})`)
+    // The cached flag can go stale: a slow model load can outlive the startup
+    // poller of an older app session, a restart race can leave 'error' behind,
+    // etc. — while the sidecar on the port is actually healthy. Trust a live
+    // probe over the flag before refusing (this path only runs when we would
+    // otherwise fail, so the extra round-trip costs nothing in the happy path).
+    const health = stopping ? null : await checkHealth(1000)
+    if (health?.loaded) {
+      setStatus('ready', `whisper "${health.model}" on ${health.device}`)
+      console.log('[sidecar] status self-healed via live health probe:', health)
+    } else {
+      throw new Error(`Transcriber not ready (${status}${statusDetail ? `: ${statusDetail}` : ''})`)
+    }
   }
 
   const bytes = wav instanceof ArrayBuffer ? new Uint8Array(wav) : new Uint8Array(wav)

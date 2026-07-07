@@ -31,7 +31,7 @@ describe('transcribe-queue', () => {
     const onDrop = vi.fn()
     initTranscribeQueue({ transcribe, deliver, onDrop })
     enqueue(new ArrayBuffer(8), settings, 1000)
-    await vi.advanceTimersByTimeAsync(3000 * 41)
+    await vi.advanceTimersByTimeAsync(3000 * 201)
     expect(onDrop).toHaveBeenCalledTimes(1)
     expect(deliver).not.toHaveBeenCalled()
     expect(queueLength()).toBe(0)
