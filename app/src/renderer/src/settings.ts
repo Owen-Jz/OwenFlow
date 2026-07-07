@@ -1981,31 +1981,39 @@ $('btn-dictate-now').addEventListener('click', () => {
 
 // ─── Backup: export / import ────────────────────────────────────────────────
 
+// One shared timer so a fresh status message is never erased by the 3s
+// clear of an earlier one (export then import in quick succession).
+let backupStatusTimer: ReturnType<typeof setTimeout> | null = null
+function showBackupStatus(text: string): void {
+  const status = $('backup-status')
+  if (backupStatusTimer) clearTimeout(backupStatusTimer)
+  status.textContent = text
+  backupStatusTimer = setTimeout(() => {
+    status.textContent = ''
+  }, 3000)
+}
+
 $('btn-export').addEventListener('click', () => {
   void (async () => {
-    const status = $('backup-status')
     const res = await window.owenflow.settings.export()
     if (!res.ok) {
-      if (res.error !== 'canceled') status.textContent = res.error ?? 'Export failed'
+      if (res.error !== 'canceled') showBackupStatus(res.error ?? 'Export failed')
       return
     }
-    status.textContent = 'Saved ✓'
-    setTimeout(() => { status.textContent = '' }, 3000)
+    showBackupStatus('Saved ✓')
   })()
 })
 
 $('btn-import').addEventListener('click', () => {
   void (async () => {
-    const status = $('backup-status')
     const res = await window.owenflow.settings.import()
     if (!res.ok) {
-      if (res.error !== 'canceled') status.textContent = res.error ?? 'Import failed'
+      if (res.error !== 'canceled') showBackupStatus(res.error ?? 'Import failed')
       return
     }
     const fresh = await window.owenflow.settings.get()
     fillForm(fresh)
-    status.textContent = `Imported ${res.applied ?? 0} settings ✓`
-    setTimeout(() => { status.textContent = '' }, 3000)
+    showBackupStatus(`Imported ${res.applied ?? 0} settings ✓`)
   })()
 })
 
