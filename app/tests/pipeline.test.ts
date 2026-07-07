@@ -75,6 +75,25 @@ function makeDeps(settings: OwenFlowSettings, callOrder: string[]): MockedDeps {
   }
 }
 
+/** Minimal full-pipeline deps with sensible defaults; accepts per-test overrides. */
+function makePipelineDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
+  const wav = new ArrayBuffer(32)
+  return {
+    setPillState: vi.fn(),
+    recorderStart: vi.fn(),
+    recorderStop: vi.fn(async () => wav),
+    getSettings: () => baseSettings(),
+    appendHistory: vi.fn(),
+    transcribe: vi.fn(async () => ({ text: 'hello', durationMs: 1 })),
+    cleanup: vi.fn(async (raw: string) => raw),
+    inject: vi.fn(async () => {}),
+    pressEnter: vi.fn(async () => {}),
+    getForegroundApp: vi.fn(async () => null),
+    enqueueTranscription: vi.fn(),
+    ...overrides
+  }
+}
+
 const pillStates = (deps: MockedDeps): PillState[] =>
   deps.setPillState.mock.calls.map(([s]) => s as PillState)
 
@@ -337,6 +356,33 @@ describe('pipeline', () => {
     deps.transcribe.mockResolvedValue({ text: 'please review the attached', durationMs: 10 })
     await runDictation(deps)
     expect(deps.cleanup.mock.calls[0][1].flowMode).toBe('formal')
+  })
+
+  it('passes focused-field context to cleanup as extra system guidance', async () => {
+    const focus = vi.fn().mockResolvedValue({ text: 'Hi Tunde, about the Nomba invoice', site: 'mail.google.com' })
+    const cleanup = vi.fn().mockResolvedValue('cleaned')
+    initPipeline(makePipelineDeps({
+      readFocusContext: focus,
+      transcribe: vi.fn().mockResolvedValue({ text: 'thanks for the update', durationMs: 1 }),
+      cleanup
+    }))
+    await startDictation()
+    await stopDictation()
+    const extra = cleanup.mock.calls[0][2] as string
+    expect(extra).toContain('Tunde')        // surrounding text available for name spelling
+    expect(extra).toContain('mail.google.com') // site register hint
+  })
+
+  it('cleans normally when focus context is empty (no dep / blank read)', async () => {
+    const cleanup = vi.fn().mockResolvedValue('cleaned')
+    initPipeline(makePipelineDeps({
+      readFocusContext: vi.fn().mockResolvedValue({ text: '', site: null }),
+      transcribe: vi.fn().mockResolvedValue({ text: 'hello there world', durationMs: 1 }),
+      cleanup
+    }))
+    await startDictation()
+    await stopDictation()
+    expect(cleanup.mock.calls[0][2]).toBeUndefined() // empty context → no extra system
   })
 })
 

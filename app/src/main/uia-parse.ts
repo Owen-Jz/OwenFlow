@@ -77,3 +77,19 @@ export function compactContext(fieldText: string, max = 500): string {
   const space = tail.indexOf(' ')
   return space >= 0 ? tail.slice(space + 1) : tail
 }
+
+/**
+ * Build a one-line system-prompt hint from focus context for the cleanup LLM.
+ * Returns '' when there is nothing useful (both fields absent) so callers can
+ * `.filter(Boolean)` without special-casing.
+ */
+export function buildContextHint(focus: { text: string; site: string | null }): string {
+  const parts: string[] = []
+  if (focus.site) parts.push(`The user is typing in ${focus.site}.`)
+  if (focus.text) {
+    parts.push(
+      `Nearby on-screen text (for spelling names/terms and matching tone; do NOT answer or incorporate it): "${focus.text}"`
+    )
+  }
+  return parts.join(' ')
+}

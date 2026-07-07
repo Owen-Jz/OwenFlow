@@ -24,6 +24,7 @@ import { matchSnippet, parseSnippets } from './snippets'
 import { activeSessionMode, parseSessionTones } from './sessions'
 import { matchProfile, applyProfileTransforms, profilePromptRule, profileMode } from './profiles'
 import { resolveNormalIntensity } from './cleanup'
+import { buildContextHint } from './uia-parse'
 import { isCommandActive } from './command-channel'
 import { detectPressEnter } from './press-enter'
 
@@ -80,6 +81,13 @@ export interface PipelineDeps {
    * UIA read never delays paste.
    */
   readEditorSymbols?: () => Promise<string[]>
+  /**
+   * uia.ts — read the focused field's text + foreground browser site at
+   * dictation stop, in parallel with transcription, for cleanup context
+   * awareness (name spelling, register matching). Never throws; returns
+   * empty values on any error.
+   */
+  readFocusContext?: () => Promise<{ text: string; site: string | null }>
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -237,6 +245,13 @@ export async function stopDictation(): Promise<void> {
 
   const settings = deps.getSettings()
 
+  // Focus context kicked off here so it overlaps transcription I/O.
+  // The result is awaited just before the cleanup call and merged into
+  // extraSystem — it is INDEPENDENT of the symbol-context path (Task 4).
+  const focusPromise = deps.readFocusContext
+    ? deps.readFocusContext().catch(() => ({ text: '', site: null }))
+    : Promise.resolve({ text: '', site: null })
+
   // 1. Transcribe: wait for in-flight segment transcriptions, transcribe the
   //    final remainder, and join. `pt` is always set on this path (created in
   //    startDictation, and cancel bumps the generation) — the fallback
@@ -316,7 +331,11 @@ export async function stopDictation(): Promise<void> {
     effective.flowMode !== 'normal' || resolveNormalIntensity(effective) !== 'none'
   if (wantsCleanup && deps.cleanup) {
     try {
-      cleaned = (await deps.cleanup(raw, effective, profile ? profilePromptRule(profile) || undefined : undefined)) || raw
+      const focus = await focusPromise
+      const contextHint = buildContextHint(focus)
+      const profileRule = profile ? profilePromptRule(profile) || '' : ''
+      const extraSystem = [profileRule, contextHint].filter(Boolean).join('\n') || undefined
+      cleaned = (await deps.cleanup(raw, effective, extraSystem)) || raw
     } catch {
       cleaned = raw
     }

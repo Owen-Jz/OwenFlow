@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compactContext, extractIdentifiers, siteFromUrl } from '../src/main/uia-parse'
+import { buildContextHint, compactContext, extractIdentifiers, siteFromUrl } from '../src/main/uia-parse'
 
 describe('extractIdentifiers', () => {
   it('pulls camelCase, snake_case, PascalCase, dotted, ALLCAPS', () => {
@@ -52,5 +52,17 @@ describe('compactContext', () => {
   })
   it('returns "" for empty', () => {
     expect(compactContext('   ')).toBe('')
+  })
+})
+
+describe('buildContextHint', () => {
+  it('includes site and quoted nearby text with a do-not-answer guard', () => {
+    const h = buildContextHint({ text: 'Hi Tunde', site: 'mail.google.com' })
+    expect(h).toContain('mail.google.com')
+    expect(h).toContain('Hi Tunde')
+    expect(h).toContain('do NOT answer')
+  })
+  it('is empty when nothing is available', () => {
+    expect(buildContextHint({ text: '', site: null })).toBe('')
   })
 })

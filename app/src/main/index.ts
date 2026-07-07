@@ -89,7 +89,7 @@ import {
   pressEnter,
   warmupInjector
 } from './injector'
-import { killUia, readEditorSymbols, warmupUia } from './uia'
+import { killUia, readEditorSymbols, readFocusContext, warmupUia } from './uia'
 import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
@@ -522,6 +522,10 @@ app.whenReady().then(async () => {
       )
         return []
       return readEditorSymbols()
+    },
+    readFocusContext: async () => {
+      if (!getSettings().contextAwareness) return { text: '', site: null }
+      return readFocusContext()
     }
   })
 
