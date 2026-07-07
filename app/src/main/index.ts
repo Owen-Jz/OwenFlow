@@ -98,6 +98,7 @@ import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
 import {
+  flushScratchpadSync,
   initScratchpad,
   isScratchpadOpen,
   registerScratchpadIpc,
@@ -410,10 +411,20 @@ function registerIpc(): void {
       if (canceled || !filePaths[0]) return { ok: false, error: 'canceled' }
       const parsed = JSON.parse(await readFile(filePaths[0], 'utf8')) as unknown
       const patch = sanitizeImport(parsed)
-      const keys = Object.keys(patch)
-      if (keys.length === 0) return { ok: false, error: 'no valid settings found in file' }
-      setSettings(patch)
-      return { ok: true, applied: keys.length }
+      // Apply per-key so that a schema-invalid value (e.g. theme:'blue' passes
+      // sanitizeImport's typeof check but fails electron-store's ajv enum) only
+      // drops that one field rather than aborting the whole import mid-apply.
+      let applied = 0
+      for (const [k, v] of Object.entries(patch)) {
+        try {
+          setSettings({ [k]: v } as Partial<OwenFlowSettings>)
+          applied++
+        } catch {
+          /* schema-invalid field — skip */
+        }
+      }
+      if (applied === 0) return { ok: false, error: 'no valid settings found in file' }
+      return { ok: true, applied }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
@@ -497,6 +508,9 @@ app.whenReady().then(async () => {
           tags: ['recovered'],
           mode: item.settings.flowMode
         })
+        // Recovered dictations NEVER auto-route to the scratchpad: the focus and
+        // capture state captured at record time are minutes stale by the time
+        // the queue retries. Notify + copy-to-clipboard only.
         notify('OwenFlow — recovered dictation', final.slice(0, 140), () =>
           clipboard.writeText(final)
         )
@@ -894,6 +908,10 @@ app.on('will-quit', () => {
   // ended, not crashed. Segments already on disk are safe (append-per-segment);
   // whatever was still queued is lost — same contract as quitting mid-dictation.
   endMeetingOnQuit()
+  // Flush any pending scratchpad debounce so content typed just before quit is
+  // not lost. Must come before stopSidecar/killUia (both are synchronous) so
+  // the file is written while the process is still in a clean state.
+  flushScratchpadSync()
   stopSidecar()
   killInjector()
   killUia()

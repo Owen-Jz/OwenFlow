@@ -13,7 +13,7 @@
  */
 
 import { ipcMain } from 'electron'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
@@ -195,6 +195,27 @@ export function registerScratchpadIpc(): void {
     const win = deps?.getWindow()
     if (win && !win.isDestroyed()) win.close()
   })
+}
+
+/**
+ * Synchronously flush any pending debounced save to disk.
+ *
+ * Called from the `will-quit` handler so content typed moments before quit is
+ * not lost when the debounce timer hasn't fired yet.  Cancels the pending timer
+ * (so the async path never double-writes) and writes synchronously with
+ * writeFileSync (safe to call from a synchronous quit handler).  Errors are
+ * swallowed — this is best-effort at shutdown.
+ */
+export function flushScratchpadSync(): void {
+  if (!saveTimer) return
+  clearTimeout(saveTimer)
+  saveTimer = null
+  if (!deps) return
+  try {
+    writeFileSync(storagePath(), content, 'utf8')
+  } catch {
+    /* swallow — best-effort flush at quit time */
+  }
 }
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────

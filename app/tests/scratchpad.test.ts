@@ -11,6 +11,7 @@ vi.mock('electron', () => ({
 
 import {
   _flushForTest,
+  flushScratchpadSync,
   getContent,
   initScratchpad,
   isCapturing,
@@ -342,5 +343,34 @@ describe('onStateChange: invoked on open and close', () => {
     expect(closedCb).not.toBeNull()
     closedCb!()
     expect(onStateChange).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ─── flushScratchpadSync (FIX 3 — flush-on-quit) ─────────────────────────────
+
+describe('flushScratchpadSync: writes pending content and cancels the debounce timer', () => {
+  it('writes content synchronously and does not double-write via the debounced path', async () => {
+    const storePath = mkdtempSync(join(tmpdir(), 'owenflow-sp-flush-'))
+    try {
+      const { deps } = makeHarness(storePath)
+      initScratchpad(deps)
+      await toggleScratchpad()
+
+      // Route text — this schedules a debounced save (timer is pending)
+      routeToScratchpad('flush-on-quit content')
+
+      // flushScratchpadSync must write immediately and cancel the timer
+      flushScratchpadSync()
+
+      const filePath = join(storePath, 'scratchpad.txt')
+      expect(existsSync(filePath)).toBe(true)
+      expect(readFileSync(filePath, 'utf8')).toBe('flush-on-quit content')
+
+      // Calling again when no timer is pending is a safe no-op (no double-write)
+      flushScratchpadSync()
+      expect(readFileSync(filePath, 'utf8')).toBe('flush-on-quit content')
+    } finally {
+      rmSync(storePath, { recursive: true, force: true })
+    }
   })
 })

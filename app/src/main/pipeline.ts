@@ -307,6 +307,9 @@ export async function stopDictation(): Promise<void> {
       } catch (err) {
         if (gen !== generation) return
         processing = false
+        // No 'scratchpad' tag: inject failed on this path, meaning the text
+        // went to the app clipboard (injector leaves it there on failure) and
+        // was never consumed by the scratchpad — snippetConsumed is false here.
         appendEntry(raw, snippetText, startedAt, settings.flowMode, sessionTag(settings))
         failPill(err instanceof Error ? err.message : 'Paste failed')
         return

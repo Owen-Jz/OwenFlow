@@ -65,10 +65,10 @@ captureCheckbox.addEventListener('change', () => {
 
 btnCopy.addEventListener('click', () => {
   if (!pad.value) return
-  navigator.clipboard.writeText(pad.value).catch(() => {
-    // fallback: select all so the user can Ctrl+C manually
-    pad.select()
-  })
+  // navigator.clipboard is undefined in the packaged file:// context (not a
+  // secure context) — copy through main via IPC, matching the established
+  // pattern used by the history Copy buttons.
+  void window.owenflow.clipboard.write(pad.value)
 })
 
 // ─── Clear ────────────────────────────────────────────────────────────────────
