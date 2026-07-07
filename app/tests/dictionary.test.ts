@@ -95,3 +95,28 @@ describe('applyReplacements', () => {
     expect(applyReplacements('hello world', [])).toBe('hello world')
   })
 })
+
+describe('starring', () => {
+  it('starred words sort before unstarred, star stripped', () => {
+    const { promptWords } = parseDictionary(['alpha', '*Hermes', 'beta', '*Qdrant'])
+    expect(promptWords).toEqual(['Hermes', 'Qdrant', 'alpha', 'beta'])
+  })
+
+  it('starred words survive the bias cap when unstarred overflow', () => {
+    const filler = Array.from({ length: 80 }, (_, i) => `filler${i}longword`)
+    const { promptWords } = parseDictionary([...filler, '*Zeal'])
+    const prompt = buildBiasPrompt(promptWords)
+    expect(prompt).toContain('Zeal')
+  })
+
+  it('starred replacement strips the star from "from"', () => {
+    const { replacements } = parseDictionary(['*owen flow=>OwenFlow'])
+    expect(replacements).toEqual([{ from: 'owen flow', to: 'OwenFlow' }])
+  })
+
+  it('a bare star or star-only entry is ignored', () => {
+    const { promptWords, replacements } = parseDictionary(['*', '* ', '*=>x'])
+    expect(promptWords).toEqual([])
+    expect(replacements).toEqual([])
+  })
+})

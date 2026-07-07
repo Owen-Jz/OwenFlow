@@ -1687,8 +1687,10 @@
                 <label class="hint" for="f-dictionary" style="margin-bottom: 8px">
                   One entry per line. Plain words bias recognition (e.g. <b>Hermes</b>); use
                   <b>wrong=&gt;right</b> for replacements (e.g. <b>owen flow=&gt;OwenFlow</b>).
+                  <br />
+                  Prefix a word with * to star it — starred words always reach the recognizer first.
                 </label>
-                <textarea id="f-dictionary" spellcheck="false" placeholder="Hermes&#10;Qdrant&#10;owen flow=>OwenFlow"></textarea>
+                <textarea id="f-dictionary" spellcheck="false" placeholder="Hermes&#10;Qdrant&#10;*AlwaysFirst&#10;owen flow=>OwenFlow"></textarea>
               </div>
               <div class="card">
                 <h2>Snippets</h2>

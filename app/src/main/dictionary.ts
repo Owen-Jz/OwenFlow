@@ -13,26 +13,48 @@ export interface Replacement {
  * Parse dictionary entries into the two consumption forms:
  * - promptWords: plain entries fed to whisper as initial_prompt bias
  * - replacements: "wrong=>right" pairs applied post-transcription
+ *
+ * Starred entries (prefixed with *) are prioritized: starred prompt words
+ * appear first in the returned array so they always survive the bias cap,
+ * and the * is stripped from the output. Bare stars or star-only entries
+ * are silently ignored.
  */
 export function parseDictionary(dictionary: string[]): {
   promptWords: string[]
   replacements: Replacement[]
 } {
+  const starredPromptWords: string[] = []
   const promptWords: string[] = []
   const replacements: Replacement[] = []
   for (const raw of dictionary) {
     const entry = raw.trim()
     if (!entry) continue
-    const idx = entry.indexOf('=>')
+
+    // Check if starred
+    const isStarred = entry.startsWith('*')
+    const unstarredEntry = isStarred ? entry.slice(1).trim() : entry
+
+    // Skip if empty after stripping the star
+    if (!unstarredEntry) continue
+
+    const idx = unstarredEntry.indexOf('=>')
     if (idx > 0) {
-      const from = entry.slice(0, idx).trim()
-      const to = entry.slice(idx + 2).trim()
+      // Has => with something before it; try to add as replacement
+      const from = unstarredEntry.slice(0, idx).trim()
+      const to = unstarredEntry.slice(idx + 2).trim()
       if (from) replacements.push({ from, to })
-    } else {
-      promptWords.push(entry)
+    } else if (!(idx === 0 && isStarred)) {
+      // Treat as prompt word unless it's starred and starts with =>
+      // (i.e., skip *=>x but keep =>nothing and regular words)
+      if (isStarred) {
+        starredPromptWords.push(unstarredEntry)
+      } else {
+        promptWords.push(unstarredEntry)
+      }
     }
   }
-  return { promptWords, replacements }
+  // Return starred words first, then unstarred
+  return { promptWords: [...starredPromptWords, ...promptWords], replacements }
 }
 
 /**
