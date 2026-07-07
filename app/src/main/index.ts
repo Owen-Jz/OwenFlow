@@ -97,7 +97,13 @@ import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
-import { initScratchpad, registerScratchpadIpc, routeToScratchpad } from './scratchpad'
+import {
+  initScratchpad,
+  isScratchpadOpen,
+  registerScratchpadIpc,
+  routeToScratchpad,
+  toggleScratchpad
+} from './scratchpad'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
 import { applyReplacements, buildBiasPrompt } from './dictionary'
@@ -358,6 +364,19 @@ function registerIpc(): void {
     void startDictation()
   })
 
+  // Home "Scratchpad" quick-action: open-or-focus semantics — if already open,
+  // bring the window to front; if closed, open it via toggleScratchpad.
+  // Never closes from this path (use the tray checkbox or the window's own X).
+  ipcMain.handle(IPC.uiOpenScratchpad, () => {
+    const win = getScratchpadWindow()
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    } else {
+      void toggleScratchpad()
+    }
+  })
+
   // ── Settings export / import ──────────────────────────────────────────────
 
   ipcMain.handle(IPC.settingsExport, async () => {
@@ -428,10 +447,13 @@ app.whenReady().then(async () => {
 
   // Scratchpad floating notepad: init + IPC registration before pipeline so
   // routeToScratchpad is ready when the first dictation lands.
+  // onStateChange refreshes the tray checkbox whenever the window opens or closes
+  // (whether toggled from the tray, the Home button, or the window's own close button).
   initScratchpad({
     getWindow: getScratchpadWindow,
     createWindow: createScratchpadWindow,
-    storePath: app.getPath('userData')
+    storePath: app.getPath('userData'),
+    onStateChange: () => refreshTrayMenu()
   })
   registerScratchpadIpc()
 
@@ -640,6 +662,9 @@ app.whenReady().then(async () => {
       if (isMeetingActive()) void stopMeeting()
       else void startMeeting()
     },
+    // Scratchpad tray checkbox: checked = window open; click toggles open/close.
+    isScratchpadOpen,
+    onToggleScratchpad: () => void toggleScratchpad(),
     onOpenSettings: () => void openSettingsWindow('settings'),
     onOpenHistory: () => void openSettingsWindow('history'),
     onShowDigest: () => {

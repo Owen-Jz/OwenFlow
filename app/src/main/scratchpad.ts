@@ -31,6 +31,12 @@ export interface ScratchpadDeps {
   createWindow: () => Promise<BrowserWindow>
   /** Directory that owns scratchpad.txt (pass app.getPath('userData') in production). */
   storePath: string
+  /**
+   * Called whenever the scratchpad window opens or closes, so callers can
+   * refresh the tray menu (or any other open/close subscriber).
+   * Optional — safe to omit in tests that don't need tray refresh.
+   */
+  onStateChange?: () => void
 }
 
 // ─── Module state ─────────────────────────────────────────────────────────────
@@ -126,9 +132,14 @@ export async function toggleScratchpad(): Promise<void> {
     try {
       const win = await deps.createWindow()
       captureOn = true
+      // Notify the caller (e.g. tray) that the window is now open.
+      deps.onStateChange?.()
       // Reset captureOn when the window is closed by any means (user close, close button, etc.)
       win.once('closed', () => {
         captureOn = false
+        // Notify the caller that the window has closed so the tray checkbox
+        // can be updated even when the user hits the window's own close button.
+        deps!.onStateChange?.()
       })
       pushState()
     } finally {

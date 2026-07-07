@@ -74,7 +74,8 @@ const api: OwenFlowApi = {
   },
   ui: {
     onShowTab: (cb: (tab: 'settings' | 'history') => void) =>
-      subscribe<['settings' | 'history']>(IPC.uiShowTab, cb)
+      subscribe<['settings' | 'history']>(IPC.uiShowTab, cb),
+    openScratchpad: (): Promise<void> => ipcRenderer.invoke(IPC.uiOpenScratchpad)
   },
   clipboard: {
     write: (text: string): Promise<boolean> => ipcRenderer.invoke(IPC.clipboardWrite, text)

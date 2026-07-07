@@ -385,6 +385,11 @@ export interface OwenFlowApi {
   ui: {
     /** Settings window: main asks to switch tab ("settings" | "history"). */
     onShowTab: (cb: (tab: 'settings' | 'history') => void) => () => void
+    /**
+     * Open the scratchpad window (or focus it when already open).
+     * Never closes from this path — open-or-focus semantics only ("ui:open-scratchpad").
+     */
+    openScratchpad: () => Promise<void>
   }
   clipboard: {
     /**
@@ -529,6 +534,7 @@ export const IPC = {
   clipboardWrite: 'clipboard:write',
   cleanupBenchmark: 'cleanup:benchmark',
   uiShowTab: 'ui:show-tab',
+  uiOpenScratchpad: 'ui:open-scratchpad',
   debugSimulate: 'debug:simulate-dictation',
   appInfo: 'app:info',
   sidecarStatusGet: 'sidecar:status:get',

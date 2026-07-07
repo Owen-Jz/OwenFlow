@@ -13,6 +13,10 @@ export interface TrayCallbacks {
   getMeetingElapsed: () => string
   /** Toggle the meeting recorder (index.ts routes to start/stop by state). */
   onToggleMeeting: () => void
+  /** True when the scratchpad window is open (for the checkbox state). */
+  isScratchpadOpen: () => boolean
+  /** Toggle the scratchpad window (open if closed, close if open). */
+  onToggleScratchpad: () => void
   onOpenSettings: () => void
   onOpenHistory: () => void
   onShowDigest: () => void
@@ -151,6 +155,12 @@ export function createTray(callbacks: TrayCallbacks): Tray {
           ? `End meeting (${callbacks.getMeetingElapsed()})`
           : 'Start meeting',
         click: callbacks.onToggleMeeting
+      },
+      {
+        label: 'Scratchpad',
+        type: 'checkbox',
+        checked: callbacks.isScratchpadOpen(),
+        click: callbacks.onToggleScratchpad
       },
       { type: 'separator' },
       {

@@ -301,3 +301,46 @@ describe('routeToScratchpad: handles dead window gracefully (I2)', () => {
     }).not.toThrow()
   })
 })
+
+// ─── onStateChange callback (tray refresh) ────────────────────────────────────
+
+describe('onStateChange: invoked on open and close', () => {
+  it('calls onStateChange when the window is opened via toggleScratchpad', async () => {
+    const onStateChange = vi.fn()
+    const { deps } = makeHarness()
+    initScratchpad({ ...deps, onStateChange })
+    await toggleScratchpad()
+    expect(onStateChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onStateChange when the window fires its closed event', async () => {
+    const onStateChange = vi.fn()
+    const { deps } = makeHarness()
+
+    // Capture the 'closed' handler so we can fire it manually
+    let closedCb: (() => void) | null = null
+    const win = makeFakeWindow()
+    win.once = vi.fn((event: string, cb: () => void) => {
+      if (event === 'closed') closedCb = cb
+    })
+    deps.createWindow = vi.fn(async () => {
+      ;(deps as any)._fakeWin = win
+      return win as unknown as import('electron').BrowserWindow
+    })
+    // Point getWindow at the window we're about to create
+    const originalGetWindow = deps.getWindow
+    ;(deps as any).getWindowPatched = () => (deps as any)._fakeWin ?? null
+    const patchedDeps = { ...deps, getWindow: () => (deps as any)._fakeWin ?? null, onStateChange }
+
+    initScratchpad(patchedDeps)
+    await toggleScratchpad()
+
+    // onStateChange was called once on open
+    expect(onStateChange).toHaveBeenCalledTimes(1)
+
+    // Fire the closed event — should trigger a second call
+    expect(closedCb).not.toBeNull()
+    closedCb!()
+    expect(onStateChange).toHaveBeenCalledTimes(2)
+  })
+})

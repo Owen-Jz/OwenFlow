@@ -1979,6 +1979,12 @@ $('btn-dictate-now').addEventListener('click', () => {
   void window.owenflow.dictation.start()
 })
 
+// "Scratchpad": open-or-focus the floating scratchpad notepad (never closes
+// from this path — use the tray checkbox or the window's own X to close).
+$('btn-open-scratchpad').addEventListener('click', () => {
+  void window.owenflow.ui.openScratchpad()
+})
+
 // ─── Backup: export / import ────────────────────────────────────────────────
 
 // One shared timer so a fresh status message is never erased by the 3s
