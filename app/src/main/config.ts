@@ -228,6 +228,10 @@ export function sanitizeImport(raw: unknown): Partial<OwenFlowSettings> {
         // dictionary / snippets / sessionTones: every element must be a string
         if (!(val as unknown[]).every((item) => typeof item === 'string')) continue
         result[key] = val
+      } else {
+        // Future array fields default to the profiles rule (Array.isArray only)
+        // rather than being silently dropped on import.
+        result[key] = val
       }
     } else {
       // Scalar fields: require exact typeof match
