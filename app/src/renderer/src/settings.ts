@@ -1979,6 +1979,36 @@ $('btn-dictate-now').addEventListener('click', () => {
   void window.owenflow.dictation.start()
 })
 
+// ─── Backup: export / import ────────────────────────────────────────────────
+
+$('btn-export').addEventListener('click', () => {
+  void (async () => {
+    const status = $('backup-status')
+    const res = await window.owenflow.settings.export()
+    if (!res.ok) {
+      if (res.error !== 'canceled') status.textContent = res.error ?? 'Export failed'
+      return
+    }
+    status.textContent = 'Saved ✓'
+    setTimeout(() => { status.textContent = '' }, 3000)
+  })()
+})
+
+$('btn-import').addEventListener('click', () => {
+  void (async () => {
+    const status = $('backup-status')
+    const res = await window.owenflow.settings.import()
+    if (!res.ok) {
+      if (res.error !== 'canceled') status.textContent = res.error ?? 'Import failed'
+      return
+    }
+    const fresh = await window.owenflow.settings.get()
+    fillForm(fresh)
+    status.textContent = `Imported ${res.applied ?? 0} settings ✓`
+    setTimeout(() => { status.textContent = '' }, 3000)
+  })()
+})
+
 // ─── Init ───────────────────────────────────────────────────────────────────
 
 void window.owenflow.settings.get().then(fillForm)
