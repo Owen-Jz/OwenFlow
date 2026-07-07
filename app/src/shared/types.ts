@@ -490,6 +490,20 @@ export interface OwenFlowApi {
     /** Report a capture failure (mic/loopback denied etc.) ("meeting:capture:error"). */
     sendError: (message: string) => void
   }
+  scratchpad: {
+    /** Pull the current notepad content from main ("scratchpad:get-content"). */
+    getContent: () => Promise<string>
+    /** Push full textarea content to main on every edit ("scratchpad:set-content"). */
+    setContent: (text: string) => void
+    /** Toggle the capture flag (renderer checkbox → main) ("scratchpad:set-capture"). */
+    setCapture: (on: boolean) => void
+    /** Ask main to close the scratchpad window ("scratchpad:close"). */
+    close: () => void
+    /** Subscribe to dictation text appended by main ("scratchpad:append"). Returns unsubscribe. */
+    onAppend: (cb: (text: string) => void) => () => void
+    /** Subscribe to capture-state pushes ("scratchpad:state"). Returns unsubscribe. */
+    onState: (cb: (state: { capturing: boolean }) => void) => () => void
+  }
 }
 
 /** All IPC channel names in one place. */
@@ -546,5 +560,12 @@ export const IPC = {
   meetingCaptureError: 'meeting:capture:error',
   // Settings file export / import.
   settingsExport: 'settings:export',
-  settingsImport: 'settings:import'
+  settingsImport: 'settings:import',
+  // Scratchpad floating notepad (Wave E).
+  scratchpadAppend: 'scratchpad:append',
+  scratchpadSetContent: 'scratchpad:set-content',
+  scratchpadGetContent: 'scratchpad:get-content',
+  scratchpadSetCapture: 'scratchpad:set-capture',
+  scratchpadState: 'scratchpad:state',
+  scratchpadClose: 'scratchpad:close'
 } as const

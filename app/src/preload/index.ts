@@ -145,6 +145,21 @@ const api: OwenFlowApi = {
     sendError: (message: string): void => {
       ipcRenderer.send(IPC.meetingCaptureError, message)
     }
+  },
+  scratchpad: {
+    getContent: (): Promise<string> => ipcRenderer.invoke(IPC.scratchpadGetContent),
+    setContent: (text: string): void => {
+      ipcRenderer.send(IPC.scratchpadSetContent, text)
+    },
+    setCapture: (on: boolean): void => {
+      ipcRenderer.send(IPC.scratchpadSetCapture, on)
+    },
+    close: (): void => {
+      ipcRenderer.send(IPC.scratchpadClose)
+    },
+    onAppend: (cb: (text: string) => void) => subscribe<[string]>(IPC.scratchpadAppend, cb),
+    onState: (cb: (state: { capturing: boolean }) => void) =>
+      subscribe<[{ capturing: boolean }]>(IPC.scratchpadState, cb)
   }
 }
 

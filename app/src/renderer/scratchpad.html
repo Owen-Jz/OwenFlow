@@ -1,0 +1,261 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>Scratchpad</title>
+    <style>
+      /* ─── Direction B: charcoal surface + single red accent ──────────────
+         Red (#ff2d3a) appears in ONE place: the capture-toggle pill when ON.
+         Everything else is charcoal shades + hairline white borders.         */
+      :root {
+        --bg: #1b1b1d;
+        --titlebar-bg: #18181a;
+        --titlebar-border: rgba(255, 255, 255, 0.055);
+        --panel: #202023;
+        --border: rgba(255, 255, 255, 0.08);
+        --hover: rgba(255, 255, 255, 0.06);
+        --active: rgba(255, 255, 255, 0.1);
+        --text: #f2f2f4;
+        --text-dim: #9c9ca2;
+        --text-dimmer: #85858b;
+        --accent: #ff2d3a;
+        --font-ui: -apple-system, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+        --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+        --radius: 8px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        height: 100%;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+        overflow: hidden;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+
+      /* ── Slim custom titlebar ─────────────────────────────────────────── */
+      #titlebar {
+        display: flex;
+        align-items: center;
+        height: 36px;
+        padding: 0 8px 0 12px;
+        background: var(--titlebar-bg);
+        border-bottom: 1px solid var(--titlebar-border);
+        -webkit-app-region: drag;
+        flex-shrink: 0;
+        gap: 8px;
+      }
+      #titlebar .title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-dim);
+        letter-spacing: 0.01em;
+        flex: 1 1 auto;
+        /* draggable area on the title text */
+        -webkit-app-region: drag;
+      }
+      /* All controls inside the titlebar must opt out of dragging */
+      #titlebar button,
+      #titlebar label,
+      #titlebar input {
+        -webkit-app-region: no-drag;
+      }
+
+      /* ── Capture toggle (pill switch) ────────────────────────────────── */
+      .capture-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .capture-wrap .cap-label {
+        font-size: 11px;
+        color: var(--text-dimmer);
+        line-height: 1;
+        white-space: nowrap;
+      }
+      /* hidden real checkbox */
+      #capture-toggle {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+      }
+      /* pill track */
+      .pill-track {
+        width: 28px;
+        height: 16px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.12);
+        position: relative;
+        transition: background 180ms ease;
+        flex-shrink: 0;
+      }
+      #capture-toggle:checked + .pill-track {
+        background: var(--accent);
+      }
+      /* pill thumb */
+      .pill-track::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 180ms ease;
+      }
+      #capture-toggle:checked + .pill-track::after {
+        transform: translateX(12px);
+      }
+
+      /* ── Titlebar action buttons (copy + close) ──────────────────────── */
+      .tb-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border: none;
+        background: transparent;
+        color: var(--text-dimmer);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+        flex-shrink: 0;
+        font-size: 12px;
+      }
+      .tb-btn:hover {
+        background: var(--hover);
+        color: var(--text);
+      }
+      .tb-btn:active {
+        background: var(--active);
+      }
+      .tb-btn svg {
+        display: block;
+      }
+
+      /* ── Textarea ────────────────────────────────────────────────────── */
+      #pad {
+        flex: 1 1 auto;
+        width: 100%;
+        resize: none;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.6;
+        padding: 10px 12px;
+        /* allow selection + typing */
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      #pad::placeholder {
+        color: var(--text-dimmer);
+      }
+
+      /* ── Slim bottom bar (clear button) ──────────────────────────────── */
+      #bottombar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        height: 32px;
+        padding: 0 8px;
+        border-top: 1px solid var(--titlebar-border);
+        background: var(--titlebar-bg);
+        flex-shrink: 0;
+        gap: 6px;
+      }
+      .bar-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 8px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-dimmer);
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 11px;
+        font-family: var(--font-ui);
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+        user-select: none;
+      }
+      .bar-btn:hover {
+        background: var(--hover);
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+      .bar-btn:active {
+        background: var(--active);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Slim custom titlebar: draggable, with capture toggle + copy + close -->
+      <div id="titlebar">
+        <span class="title">Scratchpad</span>
+
+        <!-- Capture dictation toggle -->
+        <label class="capture-wrap" title="Capture dictation into this pad">
+          <input type="checkbox" id="capture-toggle" checked />
+          <div class="pill-track"></div>
+          <span class="cap-label">Capture</span>
+        </label>
+
+        <!-- Copy all -->
+        <button class="tb-btn" id="btn-copy" title="Copy all">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M11 5V3.5A1.5 1.5 0 009.5 2h-7A1.5 1.5 0 001 3.5v7A1.5 1.5 0 002.5 12H4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <!-- Close -->
+        <button class="tb-btn" id="btn-close" title="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Main editable notepad area -->
+      <textarea
+        id="pad"
+        spellcheck="false"
+        autocomplete="off"
+        autocorrect="off"
+        placeholder="Dictated text will appear here…"
+      ></textarea>
+
+      <!-- Bottom toolbar: clear -->
+      <div id="bottombar">
+        <button class="bar-btn" id="btn-clear">Clear</button>
+      </div>
+    </div>
+    <script type="module" src="./src/scratchpad.ts"></script>
+  </body>
+</html>

@@ -14,9 +14,11 @@ import {
   createMeetingWindow,
   createPillWindow,
   createRecorderWindow,
+  createScratchpadWindow,
   getMeetingWindow,
   getPillWindow,
   getRecorderWindow,
+  getScratchpadWindow,
   getSettingsWindow,
   openSettingsWindow,
   setPillPositionProvider,
@@ -95,6 +97,7 @@ import { parseSessionTones } from './sessions'
 import { benchmarkProviders, cleanup, runCommand, summarize } from './cleanup'
 import { sendZealCommand } from './zeal'
 import { proposeReplacements } from './learn'
+import { initScratchpad, registerScratchpadIpc } from './scratchpad'
 import { initTranscribeQueue, enqueue } from './transcribe-queue'
 import { initDigestScheduler, rescheduleDigest, digestNow } from './digest-scheduler'
 import { applyReplacements, buildBiasPrompt } from './dictionary'
@@ -422,6 +425,15 @@ app.whenReady().then(async () => {
   })
 
   registerIpc()
+
+  // Scratchpad floating notepad: init + IPC registration before pipeline so
+  // routeToScratchpad is ready when the first dictation lands.
+  initScratchpad({
+    getWindow: getScratchpadWindow,
+    createWindow: createScratchpadWindow,
+    storePath: app.getPath('userData')
+  })
+  registerScratchpadIpc()
 
   // Wire BEFORE the pill window is created so its initial coordinates already
   // honor a previously-saved position (windows.ts defaults to bottom-center).

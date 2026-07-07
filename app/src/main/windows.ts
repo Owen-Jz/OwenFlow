@@ -8,7 +8,7 @@ import { PILL_HEIGHT, PILL_WIDTH, computePillPosition } from './pill-position'
 
 const preloadPath = join(__dirname, '../preload/index.js')
 
-function rendererUrl(page: 'recorder' | 'pill' | 'settings' | 'meeting'): {
+function rendererUrl(page: 'recorder' | 'pill' | 'settings' | 'meeting' | 'scratchpad'): {
   loadInto: (win: BrowserWindow) => Promise<void>
 } {
   return {
@@ -243,4 +243,48 @@ export async function openSettingsWindow(tab: 'settings' | 'history' = 'settings
 
 export function getSettingsWindow(): BrowserWindow | null {
   return settingsWindow
+}
+
+// ─── Scratchpad floating notepad ────────────────────────────────────────────
+
+let scratchpadWindow: BrowserWindow | null = null
+
+/**
+ * Floating always-on-top notepad (frameless, resizable, user-typeable).
+ * Positioned at the right edge of the work area so it never fights the pill
+ * overlay (which lives at bottom-center by default).
+ */
+export async function createScratchpadWindow(): Promise<BrowserWindow> {
+  const { workArea } = screen.getPrimaryDisplay()
+  const width = 380
+  const height = 460
+  const x = workArea.x + workArea.width - width - 24
+  const y = workArea.y + 96
+  scratchpadWindow = new BrowserWindow({
+    show: false,
+    x,
+    y,
+    width,
+    height,
+    minWidth: 300,
+    minHeight: 240,
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    backgroundColor: '#1b1b1d',
+    webPreferences: {
+      preload: preloadPath,
+      sandbox: false,
+      contextIsolation: true
+    }
+  })
+  await rendererUrl('scratchpad').loadInto(scratchpadWindow)
+  scratchpadWindow.on('closed', () => (scratchpadWindow = null))
+  scratchpadWindow.show()
+  return scratchpadWindow
+}
+
+export function getScratchpadWindow(): BrowserWindow | null {
+  return scratchpadWindow
 }
