@@ -109,9 +109,22 @@ export class Pretranscriber {
    * Hotkey released: append the final remainder as the last segment, wait for
    * the background chain, then resolve every still-missing segment with one
    * attempt each (in order). Never throws.
+   *
+   * `symbolContext` (editor-symbol bias string built by stopDictation) is
+   * merged into the context of the FINAL REMAINDER ONLY — never into
+   * background segments or degraded-mode retries:
+   *   - Background segments are transcribed in the serial chain BEFORE
+   *     finish() is called, so they bypass this method entirely.
+   *   - Degraded-mode retries (i < finalIndex in the loop below) receive
+   *     boundary context only, the same as if they had succeeded in the chain.
+   * This makes the invariant structural: the `symbolContext` parameter simply
+   * does not exist at background/retry call sites.
    */
-  async finish(finalWav: ArrayBuffer): Promise<PretranscribeOutcome> {
+  async finish(finalWav: ArrayBuffer, symbolContext?: string): Promise<PretranscribeOutcome> {
     this.finished = true
+    // Capture the index now, before pushing, so the for-loop can identify the
+    // final remainder precisely (degraded retries have i < finalIndex).
+    const finalIndex = this.segments.length
     this.segments.push({ wav: finalWav, text: null })
     await this.chain
     if (this.cancelled) return { ok: true, text: '' } // caller discards via generation guard
@@ -123,8 +136,15 @@ export class Pretranscriber {
       const seg = this.segments[i]
       if (seg.text !== null) continue
       if (this.cancelled) return { ok: true, text: '' }
+      // Symbol context applies to the final remainder only (i === finalIndex).
+      // Mid-dictation retries (i < finalIndex) stay on boundary context alone.
+      const boundaryCtx = this.contextFor(i)
+      const ctx =
+        i === finalIndex && symbolContext
+          ? [symbolContext, boundaryCtx].filter(Boolean).join(' ')
+          : boundaryCtx
       try {
-        seg.text = (await this.transcribe(seg.wav, this.contextFor(i))).trim()
+        seg.text = (await this.transcribe(seg.wav, ctx)).trim()
       } catch (err) {
         this.lastError = err instanceof Error ? err.message : 'Transcription failed'
         return { ok: false, wavs: this.segments.map((s) => s.wav), error: this.lastError }

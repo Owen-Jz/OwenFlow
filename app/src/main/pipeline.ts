@@ -107,15 +107,11 @@ let pretrans: Pretranscriber | null = null
 /**
  * Promise for editor symbols kicked off at dictation start (target editor is
  * focused then). Awaited behind a 250ms cap in stopDictation so a slow UIA
- * read never delays paste. Null when the dep is absent or already consumed.
+ * read never delays paste. The resolved list becomes a local `symbolContext`
+ * string passed explicitly into acc.finish() — see stopDictation. Null when
+ * the dep is absent or already consumed.
  */
 let editorSymbolsPromise: Promise<string[]> | null = null
-/**
- * Resolved symbol context string for the current dictation, set from
- * editorSymbolsPromise in stopDictation and read by the Pretranscriber
- * closure at transcription time. Undefined when no identifiers were found.
- */
-let pendingSymbolContext: string | undefined = undefined
 
 export function initPipeline(pipelineDeps: PipelineDeps): void {
   deps = pipelineDeps
@@ -143,13 +139,11 @@ export async function startDictation(): Promise<void> {
   const d = deps
   pretrans = new Pretranscriber(async (wav, boundaryContext) => {
     if (!d.transcribe) throw new Error('Transcriber unavailable')
-    // Merge symbol context (set by stopDictation before acc.finish) with the
-    // per-segment boundary context. Both may be undefined for short dictations.
-    const ctx =
-      pendingSymbolContext || boundaryContext
-        ? [pendingSymbolContext, boundaryContext].filter(Boolean).join(' ') || undefined
-        : undefined
-    return (await d.transcribe(wav, d.getSettings(), ctx)).text
+    // Background segments use boundary context only. Symbol context (editor
+    // identifiers) is passed structurally into finish(wav, symbolContext) at
+    // stop time — see stopDictation — so it reaches the final remainder alone
+    // and can never leak onto mid-dictation segments or degraded-mode retries.
+    return (await d.transcribe(wav, d.getSettings(), boundaryContext)).text
   })
   if (hideTimer) clearTimeout(hideTimer)
   deps.setPillState({ state: 'recording' })
@@ -157,7 +151,6 @@ export async function startDictation(): Promise<void> {
   // Editor symbols are read NOW (target editor is focused at start); the read
   // is awaited behind a cap at stop so a slow UIA read never delays paste.
   editorSymbolsPromise = deps.readEditorSymbols ? deps.readEditorSymbols().catch(() => []) : null
-  pendingSymbolContext = undefined
 }
 
 /**
@@ -185,7 +178,6 @@ export function cancelDictation(): boolean {
   pretrans?.cancel()
   pretrans = null
   editorSymbolsPromise = null
-  pendingSymbolContext = undefined
   if (dictating) {
     dictating = false
     // Stop the recorder so the mic releases; discard whatever it captured.
@@ -234,11 +226,13 @@ export async function stopDictation(): Promise<void> {
   pretrans = null
 
   // Await editor symbols behind a 250ms cap — a slow UIA read must never push
-  // out the paste. The resolved context is read by the Pretranscriber closure
-  // at transcription time (see startDictation).
+  // out the paste. The resolved string is passed explicitly into acc.finish()
+  // below and reaches ONLY the final-remainder transcription (not background
+  // segments, which ran in the chain before finish() is called, and not
+  // degraded-mode retries, which are identified by index inside finish()).
   const symbols = await withCap(editorSymbolsPromise, EDITOR_SYMBOL_CAP_MS, [])
   editorSymbolsPromise = null
-  pendingSymbolContext = symbols.length ? `Code identifiers: ${symbols.join(', ')}.` : undefined
+  const symbolContext = symbols.length ? `Code identifiers: ${symbols.join(', ')}.` : undefined
   if (gen !== generation) return // cancelled while awaiting symbols
 
   const settings = deps.getSettings()
@@ -253,7 +247,7 @@ export async function stopDictation(): Promise<void> {
       if (!deps?.transcribe) throw new Error('Transcriber unavailable')
       return (await deps.transcribe(w, settings, context)).text
     })
-  const outcome = await acc.finish(wav)
+  const outcome = await acc.finish(wav, symbolContext)
   if (gen !== generation) return // cancelled — ignore the late transcript
 
   if (!outcome.ok) {

@@ -474,6 +474,42 @@ describe('streaming pre-transcription (normal one-shot path)', () => {
     expect(deps.transcribe).toHaveBeenCalledTimes(1)
     expect(deps.inject).toHaveBeenCalledWith('um hello wisper world')
   })
+
+  it('a background segment pushed during recording does NOT receive the symbol context', async () => {
+    // Regression guard for the Path-B leak: a background segment queued in
+    // the serial chain must NEVER observe the editor-symbol context that
+    // stopDictation resolves at hotkey release. Only the final remainder
+    // (the segment appended inside finish()) should carry it.
+    const symbols = vi.fn().mockResolvedValue(['userId', 'fetchUser'])
+    const capturedContexts: (string | undefined)[] = []
+    const transcribe = vi.fn().mockImplementation(
+      async (_wav: ArrayBuffer, _s: unknown, ctx?: string) => {
+        capturedContexts.push(ctx)
+        return { text: 'hello world', durationMs: 10 }
+      }
+    )
+    const deps = {
+      ...makeDeps(baseSettings({ cleanupEnabled: false }), []),
+      readEditorSymbols: symbols,
+      transcribe
+    }
+    initPipeline(deps)
+
+    await startDictation()
+    onRecorderSegment(new ArrayBuffer(8)) // push one background segment
+    // Wait for the background transcription to finish before releasing the
+    // hotkey — this is the normal latency-win path.
+    await flushUntil(() => transcribe.mock.calls.length === 1)
+    await stopDictation()
+
+    // Two transcribe calls: background segment (index 0) + final remainder (index 1).
+    expect(transcribe).toHaveBeenCalledTimes(2)
+    // Background segment: boundary context only — no "Code identifiers" prefix.
+    expect(capturedContexts[0] ?? '').not.toContain('Code identifiers')
+    // Final remainder: symbol context prepended (plus boundary context tail).
+    expect(capturedContexts[1]).toContain('userId')
+    expect(capturedContexts[1]).toContain('fetchUser')
+  })
 })
 
 describe('press enter voice command', () => {
