@@ -29,7 +29,11 @@ const api: OwenFlowApi = {
   settings: {
     get: (): Promise<OwenFlowSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch: Partial<OwenFlowSettings>): Promise<OwenFlowSettings> =>
-      ipcRenderer.invoke(IPC.settingsSet, patch)
+      ipcRenderer.invoke(IPC.settingsSet, patch),
+    export: (): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke(IPC.settingsExport),
+    import: (): Promise<{ ok: boolean; applied?: number; error?: string }> =>
+      ipcRenderer.invoke(IPC.settingsImport)
   },
   history: {
     list: (limit?: number): Promise<HistoryEntry[]> => ipcRenderer.invoke(IPC.historyList, limit),

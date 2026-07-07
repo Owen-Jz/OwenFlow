@@ -325,6 +325,10 @@ export interface OwenFlowApi {
   settings: {
     get: () => Promise<OwenFlowSettings>
     set: (patch: Partial<OwenFlowSettings>) => Promise<OwenFlowSettings>
+    /** Write current settings to a user-chosen JSON file ("settings:export"). */
+    export: () => Promise<{ ok: boolean; path?: string; error?: string }>
+    /** Read and merge a previously exported settings file ("settings:import"). */
+    import: () => Promise<{ ok: boolean; applied?: number; error?: string }>
   }
   history: {
     list: (limit?: number) => Promise<HistoryEntry[]>
@@ -539,5 +543,8 @@ export const IPC = {
   meetingCaptureStop: 'meeting:capture:stop',
   meetingCaptureStopped: 'meeting:capture:stopped',
   meetingSegment: 'meeting:segment',
-  meetingCaptureError: 'meeting:capture:error'
+  meetingCaptureError: 'meeting:capture:error',
+  // Settings file export / import.
+  settingsExport: 'settings:export',
+  settingsImport: 'settings:import'
 } as const

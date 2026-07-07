@@ -1,11 +1,12 @@
-import { app, BrowserWindow, clipboard, ipcMain, Notification, session } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, session } from 'electron'
+import { readFile, writeFile } from 'node:fs/promises'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 
 // The pill overlay is click-through, so it can never produce a "user gesture" —
 // without this switch Chromium keeps its AudioContext suspended and the
 // recording start/stop cues are permanently silent.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-import { getSettings, isFirstRun, onSettingsChange, parseDictionary, setSettings } from './config'
+import { getSettings, isFirstRun, onSettingsChange, parseDictionary, sanitizeImport, setSettings } from './config'
 import * as history from './history'
 import { clipboardWrite } from './clipboard'
 import { createTray, refreshTrayMenu } from './tray'
@@ -352,6 +353,48 @@ function registerIpc(): void {
     const win = getSettingsWindow()
     if (win && !win.isDestroyed()) win.minimize()
     void startDictation()
+  })
+
+  // ── Settings export / import ──────────────────────────────────────────────
+
+  ipcMain.handle(IPC.settingsExport, async () => {
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export OwenFlow settings',
+        defaultPath: `owenflow-settings-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+      })
+      if (canceled || !filePath) return { ok: false, error: 'canceled' }
+      const payload = {
+        app: 'owenflow',
+        version: app.getVersion(),
+        exportedAt: new Date().toISOString(),
+        settings: getSettings()
+      }
+      await writeFile(filePath, JSON.stringify(payload, null, 2), 'utf8')
+      return { ok: true, path: filePath }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle(IPC.settingsImport, async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Import OwenFlow settings',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile']
+      })
+      if (canceled || !filePaths[0]) return { ok: false, error: 'canceled' }
+      const parsed = JSON.parse(await readFile(filePaths[0], 'utf8')) as unknown
+      const patch = sanitizeImport(parsed)
+      const keys = Object.keys(patch)
+      if (keys.length === 0) return { ok: false, error: 'no valid settings found in file' }
+      setSettings(patch)
+      return { ok: true, applied: keys.length }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 }
 

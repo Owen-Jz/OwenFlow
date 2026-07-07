@@ -23,7 +23,7 @@ vi.mock('electron-store', () => ({
   }
 }))
 
-import { DEFAULT_SETTINGS, deriveCleanupIntensity, getSettings } from '../src/main/config'
+import { DEFAULT_SETTINGS, deriveCleanupIntensity, getSettings, sanitizeImport } from '../src/main/config'
 
 describe('config theme setting', () => {
   it('defaults theme to dark', () => {
@@ -224,5 +224,24 @@ describe('config ZEAL voice client', () => {
     expect(schema.zealApiKey.default).toBe('')
     expect(schema.zealSpeakReplies.type).toBe('boolean')
     expect(schema.zealSpeakReplies.default).toBe(true)
+  })
+})
+
+describe('sanitizeImport', () => {
+  it('keeps only known keys with matching types', () => {
+    const p = sanitizeImport({ theme: 'light', bogus: 1, hotkey: 42, dictionary: ['a', '*b'] })
+    expect(p).toEqual({ theme: 'light', dictionary: ['a', '*b'] })
+  })
+  it('rejects arrays with non-string elements for string[] fields', () => {
+    expect(sanitizeImport({ dictionary: ['ok', 7] })).toEqual({})
+  })
+  it('returns {} for non-object input', () => {
+    expect(sanitizeImport(null)).toEqual({})
+    expect(sanitizeImport('x')).toEqual({})
+    expect(sanitizeImport([1])).toEqual({})
+  })
+  it('unwraps a full export file shape ({settings: {...}})', () => {
+    expect(sanitizeImport({ app: 'owenflow', version: '1.0', settings: { theme: 'dark' } }))
+      .toEqual({ theme: 'dark' })
   })
 })

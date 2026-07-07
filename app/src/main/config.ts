@@ -182,6 +182,63 @@ export function onSettingsChange(listener: SettingsListener): () => void {
   })
 }
 
+/** String-array field names that require every element to be typeof 'string'. */
+const STRING_ARRAY_FIELDS: ReadonlySet<string> = new Set(['dictionary', 'snippets', 'sessionTones'])
+
+/**
+ * Validate and sanitize a parsed import payload into a safe partial settings
+ * patch. Accepts both a raw patch (`{ theme: 'dark', ... }`) and a full export
+ * file envelope (`{ app: 'owenflow', settings: { ... } }`). Unknown keys,
+ * wrong-typed values, and non-object input are dropped silently.
+ *
+ * For array fields: `profiles` is accepted when it is any array; the string[]
+ * fields (`dictionary`, `snippets`, `sessionTones`) additionally require every
+ * element to be a string.
+ */
+export function sanitizeImport(raw: unknown): Partial<OwenFlowSettings> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+
+  let obj = raw as Record<string, unknown>
+
+  // Unwrap full export file shape: { app: 'owenflow', ..., settings: { ... } }
+  if (
+    obj.settings !== null &&
+    obj.settings !== undefined &&
+    typeof obj.settings === 'object' &&
+    !Array.isArray(obj.settings)
+  ) {
+    obj = obj.settings as Record<string, unknown>
+  }
+
+  const result: Partial<Record<keyof OwenFlowSettings, unknown>> = {}
+
+  for (const _key of Object.keys(DEFAULT_SETTINGS)) {
+    const key = _key as keyof OwenFlowSettings
+    if (!(key in obj)) continue
+
+    const defaultVal = DEFAULT_SETTINGS[key]
+    const val = obj[key]
+
+    if (Array.isArray(defaultVal)) {
+      if (!Array.isArray(val)) continue
+      if (key === 'profiles') {
+        // profiles: Array.isArray check only — element shape is not validated
+        result[key] = val
+      } else if (STRING_ARRAY_FIELDS.has(key)) {
+        // dictionary / snippets / sessionTones: every element must be a string
+        if (!(val as unknown[]).every((item) => typeof item === 'string')) continue
+        result[key] = val
+      }
+    } else {
+      // Scalar fields: require exact typeof match
+      if (typeof val !== typeof defaultVal) continue
+      result[key] = val
+    }
+  }
+
+  return result as Partial<OwenFlowSettings>
+}
+
 /**
  * Dictionary parsing lives in dictionary.ts (pure module, unit-testable
  * without electron); re-exported here so config still owns the format.
