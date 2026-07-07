@@ -419,6 +419,28 @@ describe('pipeline', () => {
     await stopDictation()
     expect(inject).toHaveBeenCalledOnce()
   })
+
+  it('routes snippet expansion to routeText and skips inject', async () => {
+    const routeText = vi.fn(() => true)
+    const inject = vi.fn(async () => {})
+    const appendHistory = vi.fn()
+    initPipeline(makePipelineDeps({
+      routeText,
+      inject,
+      appendHistory,
+      getSettings: () => baseSettings({ snippets: ['hi=>Hello there'] }),
+      transcribe: vi.fn(async () => ({ text: 'hi', durationMs: 10 }))
+    }))
+    await startDictation()
+    await stopDictation()
+
+    expect(routeText).toHaveBeenCalledOnce()
+    expect(routeText).toHaveBeenCalledWith('Hello there') // snippet expansion routed
+    expect(inject).not.toHaveBeenCalled()
+    const entry = appendHistory.mock.calls.at(-1)[0]
+    expect(entry.tags).toContain('scratchpad')
+    expect(entry.final).toBe('Hello there')
+  })
 })
 
 describe('streaming pre-transcription (normal one-shot path)', () => {
