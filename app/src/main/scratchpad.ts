@@ -42,6 +42,8 @@ let content = ''
 let captureOn = false
 /** Debounce timer handle for disk writes. */
 let saveTimer: NodeJS.Timeout | null = null
+/** Guard against concurrent toggleScratchpad calls creating multiple windows. */
+let creating = false
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -82,6 +84,7 @@ export function initScratchpad(d: ScratchpadDeps): void {
   deps = d
   content = ''
   captureOn = false
+  creating = false
   // Load persisted content synchronously — called once during app startup, not on a hot path.
   try {
     const path = join(d.storePath, 'scratchpad.txt')
@@ -110,6 +113,7 @@ export function getContent(): string {
 /**
  * Create+show the scratchpad window if it is closed; close it if open.
  * Sets captureOn to true on open and false on close.
+ * Guards against concurrent calls creating multiple windows.
  */
 export async function toggleScratchpad(): Promise<void> {
   if (!deps) return
@@ -117,13 +121,19 @@ export async function toggleScratchpad(): Promise<void> {
     deps.getWindow()!.close()
     // captureOn is reset to false via the 'closed' handler registered below
   } else {
-    const win = await deps.createWindow()
-    captureOn = true
-    // Reset captureOn when the window is closed by any means (user close, close button, etc.)
-    win.once('closed', () => {
-      captureOn = false
-    })
-    pushState()
+    if (creating) return
+    creating = true
+    try {
+      const win = await deps.createWindow()
+      captureOn = true
+      // Reset captureOn when the window is closed by any means (user close, close button, etc.)
+      win.once('closed', () => {
+        captureOn = false
+      })
+      pushState()
+    } finally {
+      creating = false
+    }
   }
 }
 

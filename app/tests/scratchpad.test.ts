@@ -208,3 +208,96 @@ describe('isScratchpadOpen / isCapturing', () => {
     expect(isCapturing()).toBe(false)
   })
 })
+
+// ─── Race condition and lifecycle tests ────────────────────────────────────────
+
+describe('toggleScratchpad: guards against concurrent calls (C1)', () => {
+  it('only calls createWindow once when toggleScratchpad is called twice without awaiting', async () => {
+    const { deps } = makeHarness()
+    initScratchpad(deps)
+
+    // Create a promise we control
+    let resolveCreate: (win: import('electron').BrowserWindow) => void
+    const createPromise = new Promise((resolve) => {
+      resolveCreate = resolve
+    })
+
+    // Replace createWindow with one that returns our controlled promise
+    deps.createWindow = vi.fn(async () => {
+      const win = makeFakeWindow()
+      return new Promise((resolve) => {
+        createPromise.then(() => resolve(win as unknown as import('electron').BrowserWindow))
+      })
+    })
+
+    // Call toggleScratchpad twice without awaiting
+    const p1 = toggleScratchpad()
+    const p2 = toggleScratchpad()
+
+    // Resolve the promise
+    resolveCreate!(makeFakeWindow() as unknown as import('electron').BrowserWindow)
+
+    // Wait for both to settle
+    await Promise.all([p1, p2])
+
+    // createWindow should have been called exactly once
+    expect(deps.createWindow).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('toggleScratchpad: close lifecycle (I1)', () => {
+  it('captures the closed callback and clears captureOn when invoked', async () => {
+    const h = makeHarness()
+    initScratchpad(h.deps)
+
+    let closedCb: (() => void) | null = null
+
+    // Create a window with a custom once that captures the callback
+    const winWithCustomOnce = makeFakeWindow()
+    winWithCustomOnce.once = vi.fn((event: string, callback: () => void) => {
+      if (event === 'closed') closedCb = callback
+    })
+
+    // Patch createWindow to return our window
+    const originalCreateWindow = h.deps.createWindow
+    h.deps.createWindow = vi.fn(async () => {
+      h.openWindow(winWithCustomOnce)
+      return winWithCustomOnce as unknown as import('electron').BrowserWindow
+    })
+
+    // Toggle to open the window
+    await toggleScratchpad()
+    expect(isScratchpadOpen()).toBe(true)
+    expect(isCapturing()).toBe(true)
+
+    // Verify closed callback was registered
+    expect(closedCb).not.toBeNull()
+
+    // Invoke the closed callback
+    closedCb!()
+
+    // captureOn should be false now
+    expect(isCapturing()).toBe(false)
+    expect(routeToScratchpad('test')).toBe(false)
+  })
+})
+
+describe('routeToScratchpad: handles dead window gracefully (I2)', () => {
+  it('returns false and does not throw when webContents.send throws', async () => {
+    const { deps } = makeHarness()
+    initScratchpad(deps)
+    await toggleScratchpad()
+
+    // Mock send to throw an error
+    const fakeWin = deps.getWindow() as any
+    fakeWin.webContents.send = vi.fn(() => {
+      throw new Error('dead window')
+    })
+
+    // routeToScratchpad should return false and not throw
+    expect(() => {
+      const result = routeToScratchpad('test')
+      expect(result).toBe(false)
+    }).not.toThrow()
+  })
+})
